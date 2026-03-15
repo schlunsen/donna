@@ -1,0 +1,1 @@
+Use the save_deliverable MCP tool with `deliverable_type: "RECON"` and `content: "Reconnaissance analysis complete"`. Then say "Done".
