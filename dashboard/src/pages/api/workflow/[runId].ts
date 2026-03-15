@@ -1,14 +1,26 @@
 /**
- * GET /api/workflow/:runId
- *
- * Returns comprehensive workflow detail including description,
- * history events, and progress query data.
+ * API endpoints for workflow operations:
+ * GET  /api/workflow/:runId          — returns workflow detail
+ * GET  /api/workflow/:runId?query=X  — runs a query
+ * POST /api/workflow/:runId?action=cancel    — request cancellation
+ * POST /api/workflow/:runId?action=terminate — terminate workflow
  */
 
 import type { APIRoute } from 'astro';
 import { getTemporalClient } from '../../../lib/temporal.js';
 
-export const GET: APIRoute = async ({ params }) => {
+async function findWorkflow(runId: string) {
+  const client = await getTemporalClient();
+  let workflowId: string | null = null;
+  for await (const wf of client.workflow.list({ query: `RunId = "${runId}"` })) {
+    workflowId = wf.workflowId;
+    break;
+  }
+  if (!workflowId) return null;
+  return { client, handle: client.workflow.getHandle(workflowId, runId), workflowId };
+}
+
+export const GET: APIRoute = async ({ params, url }) => {
   const { runId } = params;
 
   if (!runId) {
@@ -19,25 +31,35 @@ export const GET: APIRoute = async ({ params }) => {
   }
 
   try {
-    const client = await getTemporalClient();
-
-    // Find workflow by runId
-    let workflowId: string | null = null;
-    for await (const wf of client.workflow.list({
-      query: `RunId = "${runId}"`,
-    })) {
-      workflowId = wf.workflowId;
-      break;
-    }
-
-    if (!workflowId) {
+    const found = await findWorkflow(runId);
+    if (!found) {
       return new Response(JSON.stringify({ error: 'Workflow not found' }), {
         status: 404,
         headers: { 'Content-Type': 'application/json' },
       });
     }
 
-    const handle = client.workflow.getHandle(workflowId, runId);
+    const { handle } = found;
+
+    // Handle query parameter — run a specific query
+    const queryType = url.searchParams.get('query');
+    if (queryType) {
+      try {
+        const result = await handle.query(queryType);
+        return new Response(JSON.stringify({ progress: result }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      } catch (err) {
+        return new Response(JSON.stringify({
+          error: `Query "${queryType}" failed: ${err instanceof Error ? err.message : 'unknown error'}`
+        }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+    }
+
     const description = await handle.describe();
 
     // Build detail object
@@ -69,8 +91,7 @@ export const GET: APIRoute = async ({ params }) => {
     // Fetch history events (last 50)
     try {
       const history: Array<Record<string, unknown>> = [];
-      const iter = handle.fetchHistory();
-      const fullHistory = await iter;
+      const fullHistory = await handle.fetchHistory();
       const events = fullHistory.events || [];
 
       for (const event of events.slice(-50)) {
@@ -78,7 +99,6 @@ export const GET: APIRoute = async ({ params }) => {
           eventId: Number(event.eventId),
           eventType: event.eventType,
           eventTime: event.eventTime?.toISOString?.() || null,
-          // Include relevant attributes based on event type
           attributes: getEventAttributes(event),
         });
       }
@@ -102,8 +122,65 @@ export const GET: APIRoute = async ({ params }) => {
   }
 };
 
+export const POST: APIRoute = async ({ params, url }) => {
+  const { runId } = params;
+  const action = url.searchParams.get('action');
+
+  if (!runId) {
+    return new Response(JSON.stringify({ error: 'runId required' }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  if (!action || !['cancel', 'terminate'].includes(action)) {
+    return new Response(JSON.stringify({ error: 'action must be "cancel" or "terminate"' }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  try {
+    const found = await findWorkflow(runId);
+    if (!found) {
+      return new Response(JSON.stringify({ error: 'Workflow not found' }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    const { handle } = found;
+
+    if (action === 'cancel') {
+      await handle.cancel();
+      return new Response(JSON.stringify({ success: true, message: 'Cancellation requested' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (action === 'terminate') {
+      await handle.terminate('Terminated via Shannon Dashboard');
+      return new Response(JSON.stringify({ success: true, message: 'Workflow terminated' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    return new Response(JSON.stringify({ error: 'Unknown action' }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return new Response(JSON.stringify({ error: message }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+};
+
 function getEventAttributes(event: Record<string, unknown>): Record<string, unknown> {
-  // Extract the relevant attributes object from the event
   const attrKeys = Object.keys(event).filter(k =>
     k.endsWith('EventAttributes') || k.endsWith('Attributes')
   );

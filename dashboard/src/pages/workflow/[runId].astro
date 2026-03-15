@@ -2,6 +2,7 @@
 import Base from '../../layouts/Base.astro';
 import Sidebar from '../../components/Sidebar.astro';
 import { getTemporalClient, getWorkflowProgress, type PipelineProgress } from '../../lib/temporal.js';
+import { resolveEventTypeName, getEventCategory, extractEventDetails } from '../../lib/event-types.js';
 
 const { runId } = Astro.params;
 
@@ -21,13 +22,15 @@ interface WorkflowDetail {
     parentExecution: { workflowId: string; runId: string } | null;
     input: unknown;
     result: unknown;
+    pendingActivities: number;
 }
 
 interface HistoryEvent {
     eventId: number;
     eventType: string;
     eventTime: string | null;
-    details: Record<string, unknown>;
+    details: Record<string, string>;
+    category: string;
 }
 
 let wf: WorkflowDetail | null = null;
@@ -49,6 +52,17 @@ try {
         const handle = client.workflow.getHandle(workflowId, runId);
         const desc = await handle.describe();
 
+        // Extract search attributes
+        const searchAttrs: Record<string, unknown> = {};
+        if (desc.searchAttributes) {
+            const sa = desc.searchAttributes as any;
+            if (sa.indexed) {
+                for (const [key, val] of Object.entries(sa.indexed)) {
+                    searchAttrs[key] = val;
+                }
+            }
+        }
+
         wf = {
             workflowId: desc.workflowId,
             runId: desc.runId,
@@ -61,10 +75,11 @@ try {
             historyLength: desc.historyLength,
             historySize: 0,
             memo: (desc.memo as Record<string, unknown>) || {},
-            searchAttributes: {},
+            searchAttributes: searchAttrs,
             parentExecution: desc.parentExecution || null,
             input: null,
             result: null,
+            pendingActivities: 0,
         };
 
         // Get progress for running workflows
@@ -87,17 +102,28 @@ try {
             const rawEvents = history?.events || [];
             wf.historySize = rawEvents.length;
 
+            // Count pending activities
+            const scheduledActivities = new Set<string>();
+            const completedActivities = new Set<string>();
+
             for (const ev of rawEvents) {
-                const eventType = ev.eventType || 'UNKNOWN';
-                // Simplify the event type name
-                const typeName = String(eventType)
-                    .replace('EVENT_TYPE_', '')
-                    .replace(/_/g, ' ')
-                    .toLowerCase()
-                    .replace(/\b\w/g, (c: string) => c.toUpperCase());
+                const typeName = resolveEventTypeName(ev.eventType);
+                const details = extractEventDetails(ev);
+                const category = getEventCategory(typeName);
+
+                // Track pending activities
+                const typeStr = String(ev.eventType);
+                if (typeStr.includes('ACTIVITY_TASK_SCHEDULED') || typeName.toLowerCase().includes('activity task scheduled')) {
+                    scheduledActivities.add(String(ev.eventId));
+                }
+                if (typeStr.includes('ACTIVITY_TASK_COMPLETED') || typeStr.includes('ACTIVITY_TASK_FAILED') ||
+                    typeName.toLowerCase().includes('activity task completed') || typeName.toLowerCase().includes('activity task failed')) {
+                    const schedId = details['Scheduled Event']?.replace('#', '');
+                    if (schedId) completedActivities.add(schedId);
+                }
 
                 // Extract input from WorkflowExecutionStarted
-                if (String(eventType).includes('WORKFLOW_EXECUTION_STARTED')) {
+                if (typeName.toLowerCase().includes('workflow execution started')) {
                     const attrs = ev.workflowExecutionStartedEventAttributes;
                     if (attrs?.input?.payloads) {
                         try {
@@ -116,8 +142,16 @@ try {
                     eventTime: ev.eventTime
                         ? new Date(Number(ev.eventTime.seconds) * 1000 + Number(ev.eventTime.nanos || 0) / 1e6).toISOString()
                         : null,
-                    details: {},
+                    details,
+                    category,
                 });
+            }
+
+            // Calculate pending activities
+            for (const id of scheduledActivities) {
+                if (!completedActivities.has(id)) {
+                    wf.pendingActivities++;
+                }
             }
         } catch { /* history unavailable */ }
     }
@@ -155,17 +189,6 @@ function formatEventTime(iso: string | null) {
 }
 
 const agents = progress?.agentMetrics ? Object.values(progress.agentMetrics) : [];
-
-// Categorize events for the timeline
-function getEventCategory(type: string): string {
-    const t = type.toLowerCase();
-    if (t.includes('started') || t.includes('initiated')) return 'start';
-    if (t.includes('completed') || t.includes('succeeded')) return 'success';
-    if (t.includes('failed') || t.includes('timed out') || t.includes('canceled')) return 'error';
-    if (t.includes('scheduled') || t.includes('fired')) return 'scheduled';
-    if (t.includes('activity')) return 'activity';
-    return 'default';
-}
 ---
 
 <Base title={`${wf?.workflowId || 'Workflow'} — Shannon`}>
@@ -212,9 +235,44 @@ function getEventCategory(type: string): string {
                                 </div>
                                 <div class="wf-header-actions">
                                     {wf.status === 'running' && (
-                                        <button class="btn btn-danger">Request Cancellation</button>
+                                        <button class="btn btn-danger" id="cancelBtn"
+                                            data-workflow-id={wf.workflowId}
+                                            data-run-id={wf.runId}>
+                                            Request Cancellation
+                                        </button>
                                     )}
-                                    <button class="btn btn-secondary">More Actions ▾</button>
+                                    <div class="dropdown" id="moreActionsDropdown">
+                                        <button class="btn btn-secondary" id="moreActionsBtn">
+                                            More Actions ▾
+                                        </button>
+                                        <div class="dropdown-menu" id="moreActionsMenu">
+                                            <button class="dropdown-item" data-action="terminate"
+                                                data-workflow-id={wf.workflowId} data-run-id={wf.runId}>
+                                                <span class="dropdown-item-icon">⛔</span>
+                                                Terminate
+                                            </button>
+                                            <button class="dropdown-item" data-action="signal"
+                                                data-workflow-id={wf.workflowId} data-run-id={wf.runId}>
+                                                <span class="dropdown-item-icon">📡</span>
+                                                Send Signal
+                                            </button>
+                                            <div class="dropdown-divider"></div>
+                                            <a class="dropdown-item" href={`http://localhost:8233/namespaces/default/workflows/${encodeURIComponent(wf.workflowId)}/${wf.runId}/history`} target="_blank">
+                                                <span class="dropdown-item-icon">🔗</span>
+                                                Open in Temporal UI
+                                            </a>
+                                            <button class="dropdown-item" data-action="copy-id"
+                                                data-copy-value={wf.workflowId}>
+                                                <span class="dropdown-item-icon">📋</span>
+                                                Copy Workflow ID
+                                            </button>
+                                            <button class="dropdown-item" data-action="copy-runid"
+                                                data-copy-value={wf.runId}>
+                                                <span class="dropdown-item-icon">📋</span>
+                                                Copy Run ID
+                                            </button>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
 
@@ -271,46 +329,121 @@ function getEventCategory(type: string): string {
                             <button class="wf-tab active" data-tab="history">
                                 History <span class="wf-tab-badge">{wf.historySize}</span>
                             </button>
+                            {wf.parentExecution && (
+                                <button class="wf-tab" data-tab="relationships">
+                                    Relationships
+                                </button>
+                            )}
                             {progress && (
                                 <button class="wf-tab" data-tab="progress">
                                     Progress <span class="wf-tab-badge">{agents.length}</span>
                                 </button>
                             )}
+                            {wf.pendingActivities > 0 && (
+                                <button class="wf-tab" data-tab="pending">
+                                    Pending Activities <span class="wf-tab-badge">{wf.pendingActivities}</span>
+                                </button>
+                            )}
                             <button class="wf-tab" data-tab="input">Input / Result</button>
                             <button class="wf-tab" data-tab="query">Queries</button>
+                            <button class="wf-tab" data-tab="search-attrs">Search Attributes</button>
                             <button class="wf-tab" data-tab="memo">Memo</button>
                         </div>
 
                         {/* ── Tab: History ─────────────────────────── */}
                         <div class="wf-tab-content active" id="tab-history">
                             <div class="history-toolbar">
-                                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                <div style="display: flex; align-items: center; gap: 0.75rem;">
                                     <span style="font-size: 0.78rem; color: var(--text-dim);">
                                         {events.length} events
                                     </span>
+                                    {wf.status === 'running' && (
+                                        <label class="auto-refresh-toggle">
+                                            <input type="checkbox" id="autoRefreshToggle" />
+                                            <span class="toggle-slider"></span>
+                                            <span class="toggle-label">Auto Refresh</span>
+                                        </label>
+                                    )}
                                 </div>
                                 <div style="display: flex; align-items: center; gap: 0.5rem;">
-                                    <button class="btn btn-ghost btn-sm" id="toggleCompact">Compact</button>
-                                    <button class="btn btn-ghost btn-sm" id="toggleJson">JSON</button>
+                                    <button class="btn btn-ghost btn-sm active" id="toggleCompact" data-view="compact">Compact</button>
+                                    <button class="btn btn-ghost btn-sm" id="toggleTable" data-view="table">Table</button>
+                                    <button class="btn btn-ghost btn-sm" id="toggleJson" data-view="json">JSON</button>
+                                    <div class="toolbar-divider" style="height: 18px;"></div>
+                                    <button class="btn btn-ghost btn-sm" id="sortAsc" title="Ascending">↑ Asc</button>
+                                    <button class="btn btn-ghost btn-sm active" id="sortDesc" title="Descending">↓ Desc</button>
+                                    <div class="toolbar-divider" style="height: 18px;"></div>
+                                    <button class="btn btn-ghost btn-sm" id="downloadHistory" title="Download history">⬇ Download</button>
                                 </div>
                             </div>
 
-                            <div class="history-timeline">
+                            {/* Compact timeline view (default) */}
+                            <div class="history-timeline" id="historyCompact">
                                 {events.map((ev) => (
-                                    <div class={`history-event ${getEventCategory(ev.eventType)}`} data-event-id={ev.eventId}>
+                                    <div class={`history-event ${ev.category}`} data-event-id={ev.eventId}>
                                         <div class="history-event-marker">
-                                            <div class={`history-event-dot ${getEventCategory(ev.eventType)}`}></div>
+                                            <div class={`history-event-dot ${ev.category}`}></div>
                                             {ev.eventId < events.length && <div class="history-event-line"></div>}
                                         </div>
                                         <div class="history-event-content">
                                             <div class="history-event-header">
                                                 <span class="history-event-id">#{ev.eventId}</span>
-                                                <span class="history-event-type">{ev.eventType}</span>
+                                                <span class={`history-event-type ${ev.category}`}>{ev.eventType}</span>
+                                                {Object.entries(ev.details).length > 0 && (
+                                                    <span class="history-event-details">
+                                                        {Object.entries(ev.details).map(([k, v]) => (
+                                                            <span class="history-detail-tag">
+                                                                <span class="detail-key">{k}:</span> {v}
+                                                            </span>
+                                                        ))}
+                                                    </span>
+                                                )}
                                                 <span class="history-event-time">{formatEventTime(ev.eventTime)}</span>
                                             </div>
                                         </div>
                                     </div>
                                 ))}
+                            </div>
+
+                            {/* Table view */}
+                            <div class="history-table-view" id="historyTable" style="display: none;">
+                                <div class="table-container">
+                                    <table class="data-table">
+                                        <thead>
+                                            <tr>
+                                                <th style="width: 60px;">Event ID</th>
+                                                <th>Timestamp</th>
+                                                <th>Event Type</th>
+                                                <th>Details</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {events.map((ev) => (
+                                                <tr>
+                                                    <td class="cell-duration">#{ev.eventId}</td>
+                                                    <td class="cell-time">{formatEventTime(ev.eventTime)}</td>
+                                                    <td>
+                                                        <span class={`event-type-badge ${ev.category}`}>
+                                                            {ev.eventType}
+                                                        </span>
+                                                    </td>
+                                                    <td class="cell-type">
+                                                        {Object.entries(ev.details).map(([k, v]) => (
+                                                            <span class="history-detail-tag">
+                                                                <span class="detail-key">{k}:</span> {v}
+                                                            </span>
+                                                        ))}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            {/* JSON view */}
+                            <div id="historyJson" style="display: none;">
+                                <pre class="json-viewer"><code>{JSON.stringify(events, null, 2)}</code></pre>
                             </div>
 
                             {events.length === 0 && (
@@ -321,6 +454,27 @@ function getEventCategory(type: string): string {
                                 </div>
                             )}
                         </div>
+
+                        {/* ── Tab: Relationships ─────────────────────── */}
+                        {wf.parentExecution && (
+                            <div class="wf-tab-content" id="tab-relationships">
+                                <div class="json-section">
+                                    <h3>Parent Workflow</h3>
+                                    <div class="relationship-card">
+                                        <div class="relationship-item">
+                                            <span class="wf-info-label">Workflow ID</span>
+                                            <a href={`/workflow/${wf.parentExecution.runId}`} class="wf-info-value link">
+                                                {wf.parentExecution.workflowId}
+                                            </a>
+                                        </div>
+                                        <div class="relationship-item">
+                                            <span class="wf-info-label">Run ID</span>
+                                            <span class="wf-info-value mono">{wf.parentExecution.runId}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
 
                         {/* ── Tab: Progress (Agent Metrics) ─────────── */}
                         {progress && (
@@ -413,14 +567,69 @@ function getEventCategory(type: string): string {
                             </div>
                         )}
 
+                        {/* ── Tab: Pending Activities ─────────────────── */}
+                        {wf.pendingActivities > 0 && (
+                            <div class="wf-tab-content" id="tab-pending">
+                                <div class="table-container">
+                                    <table class="data-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Activity Type</th>
+                                                <th>Event ID</th>
+                                                <th>Status</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {events
+                                                .filter(ev => ev.eventType.toLowerCase().includes('activity task scheduled'))
+                                                .map(ev => (
+                                                    <tr>
+                                                        <td style="font-weight: 500; color: var(--white);">
+                                                            {ev.details['Activity Type'] || 'Unknown'}
+                                                        </td>
+                                                        <td class="cell-duration">#{ev.eventId}</td>
+                                                        <td>
+                                                            {events.some(e =>
+                                                                (e.eventType.toLowerCase().includes('activity task completed') ||
+                                                                 e.eventType.toLowerCase().includes('activity task failed')) &&
+                                                                e.details['Scheduled Event'] === `#${ev.eventId}`
+                                                            ) ? (
+                                                                <span class="status-pill completed"><span class="status-dot"></span> Done</span>
+                                                            ) : (
+                                                                <span class="status-pill running"><span class="status-dot pulse"></span> Pending</span>
+                                                            )}
+                                                        </td>
+                                                    </tr>
+                                                ))
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        )}
+
                         {/* ── Tab: Input / Result ─────────────────────── */}
                         <div class="wf-tab-content" id="tab-input">
                             <div class="json-section">
-                                <h3>Input</h3>
+                                <div class="json-section-header">
+                                    <h3>Input</h3>
+                                    {wf.input && (
+                                        <button class="btn btn-ghost btn-sm copy-json-btn" data-json={JSON.stringify(wf.input, null, 2)}>
+                                            📋 Copy
+                                        </button>
+                                    )}
+                                </div>
                                 <pre class="json-viewer"><code>{wf.input ? JSON.stringify(wf.input, null, 2) : '(no input captured)'}</code></pre>
                             </div>
                             <div class="json-section">
-                                <h3>Result</h3>
+                                <div class="json-section-header">
+                                    <h3>Result</h3>
+                                    {wf.result && (
+                                        <button class="btn btn-ghost btn-sm copy-json-btn" data-json={JSON.stringify(wf.result, null, 2)}>
+                                            📋 Copy
+                                        </button>
+                                    )}
+                                </div>
                                 <pre class="json-viewer"><code>{wf.result ? JSON.stringify(wf.result, null, 2) : wf.status === 'running' ? '(workflow still running)' : '(no result)'}</code></pre>
                             </div>
                         </div>
@@ -433,6 +642,7 @@ function getEventCategory(type: string): string {
                                         <label class="query-label">Query Type</label>
                                         <select class="query-select" id="queryType">
                                             <option value="getProgress">getProgress</option>
+                                            <option value="__stack_trace">__stack_trace</option>
                                         </select>
                                     </div>
                                     <div>
@@ -447,6 +657,14 @@ function getEventCategory(type: string): string {
                                     <h3>Result</h3>
                                     <pre class="json-viewer" id="queryResult"><code>Run a query to see results</code></pre>
                                 </div>
+                            </div>
+                        </div>
+
+                        {/* ── Tab: Search Attributes ─────────────────── */}
+                        <div class="wf-tab-content" id="tab-search-attrs">
+                            <div class="json-section">
+                                <h3>Search Attributes</h3>
+                                <pre class="json-viewer"><code>{Object.keys(wf.searchAttributes || {}).length > 0 ? JSON.stringify(wf.searchAttributes, null, 2) : '(no search attributes set)'}</code></pre>
                             </div>
                         </div>
 
@@ -471,9 +689,9 @@ function getEventCategory(type: string): string {
         </main>
     </div>
 
-    {/* Tab switching + Query runner */}
+    {/* Tab switching + Query runner + More Actions + History views */}
     <script is:inline>
-        // Tab switching
+        // ── Tab switching ──────────────────────────
         document.querySelectorAll('.wf-tab').forEach(tab => {
             tab.addEventListener('click', () => {
                 document.querySelectorAll('.wf-tab').forEach(t => t.classList.remove('active'));
@@ -484,7 +702,7 @@ function getEventCategory(type: string): string {
             });
         });
 
-        // Copy button
+        // ── Copy buttons ──────────────────────────
         document.querySelectorAll('.copyable').forEach(el => {
             el.querySelector('.copy-btn')?.addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -496,15 +714,173 @@ function getEventCategory(type: string): string {
             });
         });
 
-        // Query runner
+        // ── Copy JSON buttons ──────────────────────
+        document.querySelectorAll('.copy-json-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const json = btn.dataset.json;
+                if (json) {
+                    navigator.clipboard.writeText(json).then(() => {
+                        btn.textContent = '✓ Copied';
+                        setTimeout(() => { btn.textContent = '📋 Copy'; }, 1500);
+                    });
+                }
+            });
+        });
+
+        // ── More Actions dropdown ──────────────────
+        const moreBtn = document.getElementById('moreActionsBtn');
+        const moreMenu = document.getElementById('moreActionsMenu');
+        if (moreBtn && moreMenu) {
+            moreBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                moreMenu.classList.toggle('open');
+            });
+
+            // Close on click outside
+            document.addEventListener('click', () => {
+                moreMenu.classList.remove('open');
+            });
+
+            moreMenu.addEventListener('click', (e) => {
+                e.stopPropagation();
+            });
+
+            // Handle dropdown actions
+            moreMenu.querySelectorAll('.dropdown-item').forEach(item => {
+                item.addEventListener('click', async () => {
+                    const action = item.dataset.action;
+                    moreMenu.classList.remove('open');
+
+                    if (action === 'copy-id' || action === 'copy-runid') {
+                        const val = item.dataset.copyValue;
+                        if (val) {
+                            await navigator.clipboard.writeText(val);
+                            const origText = item.innerHTML;
+                            item.innerHTML = '<span class="dropdown-item-icon">✓</span> Copied!';
+                            setTimeout(() => { item.innerHTML = origText; }, 1500);
+                        }
+                    } else if (action === 'terminate') {
+                        if (confirm('Are you sure you want to terminate this workflow? This cannot be undone.')) {
+                            try {
+                                const runId = item.dataset.runId;
+                                const res = await fetch('/api/workflow/' + runId + '?action=terminate', { method: 'POST' });
+                                if (res.ok) {
+                                    alert('Workflow terminated. Refreshing...');
+                                    location.reload();
+                                } else {
+                                    alert('Failed to terminate: ' + (await res.text()));
+                                }
+                            } catch (err) {
+                                alert('Error: ' + err.message);
+                            }
+                        }
+                    } else if (action === 'signal') {
+                        const signalName = prompt('Signal name:');
+                        if (signalName) {
+                            alert('Signal sending not yet implemented. Use Temporal CLI:\ntctl workflow signal --workflow-id ' + item.dataset.workflowId + ' --name ' + signalName);
+                        }
+                    }
+                });
+            });
+        }
+
+        // ── Request Cancellation button ──────────────
+        const cancelBtn = document.getElementById('cancelBtn');
+        if (cancelBtn) {
+            cancelBtn.addEventListener('click', async () => {
+                if (!confirm('Are you sure you want to cancel this workflow?')) return;
+                try {
+                    const runId = cancelBtn.dataset.runId;
+                    const res = await fetch('/api/workflow/' + runId + '?action=cancel', { method: 'POST' });
+                    if (res.ok) {
+                        alert('Cancellation requested. Refreshing...');
+                        location.reload();
+                    } else {
+                        alert('Failed to cancel: ' + (await res.text()));
+                    }
+                } catch (err) {
+                    alert('Error: ' + err.message);
+                }
+            });
+        }
+
+        // ── History view switching ──────────────────
+        const viewBtns = document.querySelectorAll('[data-view]');
+        viewBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                viewBtns.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                const view = btn.dataset.view;
+                document.getElementById('historyCompact').style.display = view === 'compact' ? '' : 'none';
+                document.getElementById('historyTable').style.display = view === 'table' ? '' : 'none';
+                document.getElementById('historyJson').style.display = view === 'json' ? '' : 'none';
+            });
+        });
+
+        // ── Sort direction ──────────────────────────
+        const sortAsc = document.getElementById('sortAsc');
+        const sortDesc = document.getElementById('sortDesc');
+        const timeline = document.getElementById('historyCompact');
+        const tableBody = document.querySelector('#historyTable tbody');
+
+        function reverseChildren(parent) {
+            if (!parent) return;
+            const children = Array.from(parent.children);
+            children.reverse().forEach(c => parent.appendChild(c));
+        }
+
+        if (sortAsc && sortDesc) {
+            sortAsc.addEventListener('click', () => {
+                sortAsc.classList.add('active');
+                sortDesc.classList.remove('active');
+                reverseChildren(timeline);
+                reverseChildren(tableBody);
+            });
+            sortDesc.addEventListener('click', () => {
+                sortDesc.classList.add('active');
+                sortAsc.classList.remove('active');
+                reverseChildren(timeline);
+                reverseChildren(tableBody);
+            });
+        }
+
+        // ── Download history ──────────────────────
+        document.getElementById('downloadHistory')?.addEventListener('click', () => {
+            const jsonCode = document.querySelector('#historyJson code');
+            if (jsonCode) {
+                const blob = new Blob([jsonCode.textContent], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'workflow-history.json';
+                a.click();
+                URL.revokeObjectURL(url);
+            }
+        });
+
+        // ── Auto refresh ──────────────────────────
+        let autoRefreshInterval = null;
+        const autoRefreshToggle = document.getElementById('autoRefreshToggle');
+        if (autoRefreshToggle) {
+            autoRefreshToggle.addEventListener('change', () => {
+                if (autoRefreshToggle.checked) {
+                    autoRefreshInterval = setInterval(() => location.reload(), 5000);
+                } else {
+                    clearInterval(autoRefreshInterval);
+                    autoRefreshInterval = null;
+                }
+            });
+        }
+
+        // ── Query runner ──────────────────────────
         document.getElementById('runQueryBtn')?.addEventListener('click', async () => {
             const btn = document.getElementById('runQueryBtn');
-            const wfId = btn.dataset.workflowId;
+            const queryType = document.getElementById('queryType').value;
             const resultEl = document.querySelector('#queryResult code');
             resultEl.textContent = 'Running query...';
 
             try {
-                const res = await fetch('/api/workflow/' + btn.dataset.runId);
+                const res = await fetch('/api/workflow/' + btn.dataset.runId + '?query=' + encodeURIComponent(queryType));
                 const data = await res.json();
                 if (data.progress) {
                     resultEl.textContent = JSON.stringify(data.progress, null, 2);
@@ -618,6 +994,65 @@ function getEventCategory(type: string): string {
         opacity: 1;
     }
 
+    /* ── Dropdown ────────────────────────────── */
+    .dropdown {
+        position: relative;
+    }
+
+    .dropdown-menu {
+        display: none;
+        position: absolute;
+        top: 100%;
+        right: 0;
+        margin-top: 4px;
+        min-width: 200px;
+        background: var(--bg-surface);
+        border: 1px solid var(--border-hover);
+        border-radius: var(--radius);
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+        z-index: 100;
+        padding: 0.35rem;
+        backdrop-filter: blur(20px);
+    }
+
+    .dropdown-menu.open {
+        display: block;
+    }
+
+    .dropdown-item {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        width: 100%;
+        padding: 0.5rem 0.75rem;
+        background: none;
+        border: none;
+        border-radius: 6px;
+        color: var(--text);
+        font-size: 0.82rem;
+        font-family: var(--font);
+        cursor: pointer;
+        transition: background 0.15s;
+        text-decoration: none;
+    }
+
+    .dropdown-item:hover {
+        background: rgba(255, 255, 255, 0.06);
+        color: var(--white);
+    }
+
+    .dropdown-item-icon {
+        font-size: 0.85rem;
+        width: 18px;
+        text-align: center;
+    }
+
+    .dropdown-divider {
+        height: 1px;
+        background: var(--border);
+        margin: 0.25rem 0;
+    }
+
     /* ── Tabs ────────────────────────────── */
     .wf-tabs {
         display: flex;
@@ -680,11 +1115,19 @@ function getEventCategory(type: string): string {
         justify-content: space-between;
         align-items: center;
         margin-bottom: 1rem;
+        flex-wrap: wrap;
+        gap: 0.5rem;
     }
 
     .btn-sm {
         font-size: 0.72rem;
         padding: 0.25rem 0.6rem;
+    }
+
+    .btn-sm.active {
+        background: var(--purple-subtle);
+        color: var(--purple-light);
+        border-color: rgba(123, 45, 142, 0.2);
     }
 
     .history-timeline {
@@ -738,6 +1181,7 @@ function getEventCategory(type: string): string {
         align-items: center;
         gap: 0.5rem;
         font-size: 0.8rem;
+        flex-wrap: wrap;
     }
 
     .history-event-id {
@@ -752,11 +1196,118 @@ function getEventCategory(type: string): string {
         font-weight: 500;
     }
 
+    .history-event-type.start { color: var(--info); }
+    .history-event-type.success { color: var(--success); }
+    .history-event-type.error { color: var(--error); }
+    .history-event-type.scheduled { color: var(--warning); }
+    .history-event-type.activity { color: var(--purple-light); }
+
+    .history-event-details {
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+    }
+
+    .history-detail-tag {
+        font-size: 0.72rem;
+        color: var(--text-muted);
+        background: rgba(255, 255, 255, 0.04);
+        padding: 0.1rem 0.45rem;
+        border-radius: 4px;
+        border: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    .detail-key {
+        color: var(--text-faint);
+    }
+
     .history-event-time {
         margin-left: auto;
         font-family: var(--font-mono);
         font-size: 0.72rem;
         color: var(--text-faint);
+        flex-shrink: 0;
+    }
+
+    .event-type-badge {
+        font-size: 0.75rem;
+        font-weight: 500;
+        padding: 0.15rem 0.5rem;
+        border-radius: 4px;
+    }
+
+    .event-type-badge.start { color: var(--info); background: var(--info-bg); }
+    .event-type-badge.success { color: var(--success); background: var(--success-bg); }
+    .event-type-badge.error { color: var(--error); background: var(--error-bg); }
+    .event-type-badge.scheduled { color: var(--warning); background: var(--warning-bg); }
+    .event-type-badge.activity { color: var(--purple-light); background: var(--purple-subtle); }
+    .event-type-badge.default { color: var(--text-muted); background: rgba(255, 255, 255, 0.04); }
+
+    /* ── Auto Refresh Toggle ────────────────── */
+    .auto-refresh-toggle {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        cursor: pointer;
+        font-size: 0.78rem;
+        color: var(--text-dim);
+    }
+
+    .auto-refresh-toggle input {
+        display: none;
+    }
+
+    .toggle-slider {
+        width: 32px;
+        height: 18px;
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 9px;
+        position: relative;
+        transition: background 0.2s;
+    }
+
+    .toggle-slider::after {
+        content: '';
+        position: absolute;
+        width: 14px;
+        height: 14px;
+        background: var(--text-dim);
+        border-radius: 50%;
+        top: 2px;
+        left: 2px;
+        transition: all 0.2s;
+    }
+
+    .auto-refresh-toggle input:checked + .toggle-slider {
+        background: var(--purple);
+    }
+
+    .auto-refresh-toggle input:checked + .toggle-slider::after {
+        left: 16px;
+        background: var(--white);
+    }
+
+    .toggle-label {
+        user-select: none;
+    }
+
+    /* ── Relationship Card ────────────────── */
+    .relationship-card {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        padding: 1.25rem 1.5rem;
+    }
+
+    .relationship-item {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+        margin-bottom: 0.75rem;
+    }
+
+    .relationship-item:last-child {
+        margin-bottom: 0;
     }
 
     /* ── Progress Card ────────────────── */
@@ -815,13 +1366,24 @@ function getEventCategory(type: string): string {
         margin-bottom: 1.5rem;
     }
 
+    .json-section-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 0.5rem;
+    }
+
     .json-section h3 {
         font-size: 0.7rem;
         text-transform: uppercase;
         letter-spacing: 0.1em;
         color: var(--text-faint);
         font-weight: 600;
-        margin-bottom: 0.5rem;
+        margin-bottom: 0;
+    }
+
+    .json-section-header + .json-viewer {
+        margin-top: 0;
     }
 
     .json-viewer {

@@ -4,7 +4,6 @@ import Sidebar from '../components/Sidebar.astro';
 import { listWorkflowsWithProgress, type WorkflowInfo } from '../lib/temporal.js';
 
 // ── Data fetching ──────────────────────────────────────────────────────────────
-// Fetch live data from Temporal. Falls back to empty state if Temporal is down.
 
 interface WorkflowRow {
     id: string;
@@ -24,8 +23,13 @@ interface WorkflowRow {
 let workflows: WorkflowRow[] = [];
 let temporalError: string | null = null;
 
+// Read URL params for filtering
+const url = new URL(Astro.request.url);
+const statusFilter = url.searchParams.get('status');
+const periodFilter = url.searchParams.get('period');
+
 try {
-    const raw = await listWorkflowsWithProgress();
+    const raw = await listWorkflowsWithProgress(statusFilter ? { status: statusFilter } : undefined);
 
     workflows = raw.map((wf: WorkflowInfo): WorkflowRow => ({
         id: wf.workflowId,
@@ -38,9 +42,16 @@ try {
         phase: wf.progress?.currentPhase || null,
         agent: wf.progress?.currentAgent || null,
         completedAgents: wf.progress?.completedAgents?.length || 0,
-        totalAgents: 13,
+        totalAgents: wf.progress?.summary?.agentCount || 13,
         costUsd: wf.progress?.summary?.totalCostUsd || 0,
     }));
+
+    // Client-side period filter
+    if (periodFilter) {
+        const now = Date.now();
+        const cutoff = periodFilter === 'hour' ? now - 3600000 : now - 86400000;
+        workflows = workflows.filter(w => new Date(w.start).getTime() >= cutoff);
+    }
 } catch (err) {
     temporalError = err instanceof Error ? err.message : 'Failed to connect to Temporal';
 }
@@ -56,6 +67,15 @@ function formatTime(iso: string | null) {
     if (!iso) return '—';
     const d = new Date(iso);
     return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+}
+
+function formatDateTime(iso: string | null) {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    return d.toLocaleString('en-US', {
+        month: 'short', day: 'numeric', year: 'numeric',
+        hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
+    });
 }
 
 function getElapsed(start: string, end: string | null) {
@@ -74,6 +94,12 @@ function truncateId(id: string) {
     if (id.length <= 38) return id;
     return id.slice(0, 35) + '…';
 }
+
+// Active filter label
+let activeFilterLabel = 'All';
+if (statusFilter) activeFilterLabel = statusFilter.charAt(0).toUpperCase() + statusFilter.slice(1);
+if (periodFilter === 'today') activeFilterLabel = 'Today';
+if (periodFilter === 'hour') activeFilterLabel = 'Last Hour';
 ---
 
 <Base title="Workflows — Shannon Dashboard">
@@ -105,6 +131,8 @@ function truncateId(id: string) {
                             </h1>
                             <p class="page-subtitle">
                                 {dateStr} · last refreshed just now
+                                {statusFilter && <span class="active-filter-badge">Filtered: {activeFilterLabel}</span>}
+                                {periodFilter && <span class="active-filter-badge">Period: {activeFilterLabel}</span>}
                                 {temporalError && <span style="color: var(--warning); margin-left: 0.5rem;">⚠ {temporalError}</span>}
                             </p>
                         </div>
@@ -115,7 +143,7 @@ function truncateId(id: string) {
                         </div>
                     </div>
                     <div>
-                        <button class="btn btn-primary">
+                        <button class="btn btn-primary" id="startWorkflowBtn">
                             <span>⚡</span> Start Workflow
                         </button>
                     </div>
@@ -152,12 +180,66 @@ function truncateId(id: string) {
                         <input type="text" placeholder="Search workflows by ID, target, or type..." id="searchInput" />
                     </div>
                     <div class="toolbar-divider"></div>
-                    <button class="btn btn-ghost">
-                        <span>☰</span> Filter
-                    </button>
-                    <button class="btn btn-ghost">
-                        <span>↕</span> Sort
-                    </button>
+
+                    <!-- Filter Dropdown -->
+                    <div class="dropdown" id="filterDropdown">
+                        <button class="btn btn-ghost" id="filterBtn">
+                            <span>☰</span> Filter
+                            {statusFilter && <span class="btn-badge">{activeFilterLabel}</span>}
+                        </button>
+                        <div class="dropdown-menu" id="filterMenu">
+                            <a class="dropdown-item {!statusFilter && !periodFilter ? 'active-item' : ''}" href="/">
+                                <span class="dropdown-item-icon">◎</span> All Workflows
+                            </a>
+                            <div class="dropdown-divider"></div>
+                            <div class="dropdown-section-label">By Status</div>
+                            <a class="dropdown-item {statusFilter === 'running' ? 'active-item' : ''}" href="/?status=running">
+                                <span class="dropdown-item-icon">◉</span> Running
+                                {runningCount > 0 && <span class="dropdown-badge info">{runningCount}</span>}
+                            </a>
+                            <a class="dropdown-item {statusFilter === 'completed' ? 'active-item' : ''}" href="/?status=completed">
+                                <span class="dropdown-item-icon">✓</span> Completed
+                                {completedCount > 0 && <span class="dropdown-badge success">{completedCount}</span>}
+                            </a>
+                            <a class="dropdown-item {statusFilter === 'failed' ? 'active-item' : ''}" href="/?status=failed">
+                                <span class="dropdown-item-icon">✗</span> Failed
+                                {failedCount > 0 && <span class="dropdown-badge error">{failedCount}</span>}
+                            </a>
+                            <div class="dropdown-divider"></div>
+                            <div class="dropdown-section-label">By Time</div>
+                            <a class="dropdown-item {periodFilter === 'today' ? 'active-item' : ''}" href="/?period=today">
+                                <span class="dropdown-item-icon">◔</span> Today
+                            </a>
+                            <a class="dropdown-item {periodFilter === 'hour' ? 'active-item' : ''}" href="/?period=hour">
+                                <span class="dropdown-item-icon">◕</span> Last Hour
+                            </a>
+                        </div>
+                    </div>
+
+                    <!-- Sort Dropdown -->
+                    <div class="dropdown" id="sortDropdown">
+                        <button class="btn btn-ghost" id="sortBtn">
+                            <span>↕</span> Sort
+                        </button>
+                        <div class="dropdown-menu" id="sortMenu">
+                            <button class="dropdown-item" data-sort="start" data-dir="desc">
+                                <span class="dropdown-item-icon">↓</span> Newest First
+                            </button>
+                            <button class="dropdown-item" data-sort="start" data-dir="asc">
+                                <span class="dropdown-item-icon">↑</span> Oldest First
+                            </button>
+                            <div class="dropdown-divider"></div>
+                            <button class="dropdown-item" data-sort="status" data-dir="asc">
+                                <span class="dropdown-item-icon">◉</span> Status
+                            </button>
+                            <button class="dropdown-item" data-sort="id" data-dir="asc">
+                                <span class="dropdown-item-icon">⇅</span> Workflow ID
+                            </button>
+                            <button class="dropdown-item" data-sort="duration" data-dir="desc">
+                                <span class="dropdown-item-icon">⏱</span> Duration (longest)
+                            </button>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Workflow Data Table -->
@@ -169,56 +251,70 @@ function truncateId(id: string) {
                                     <input type="checkbox" class="row-checkbox" id="selectAll" />
                                 </th>
                                 <th>Status</th>
-                                <th class="sorted">Workflow ID ↓</th>
+                                <th class="sortable sorted" data-sort="id">Workflow ID ↓</th>
+                                <th>Run ID</th>
+                                <th>Type</th>
                                 <th>Target</th>
-                                <th>Phase</th>
-                                <th>Progress</th>
-                                <th>Cost</th>
+                                <th>Start</th>
+                                <th>End</th>
                                 <th>Duration</th>
-                                <th>Started</th>
                             </tr>
                         </thead>
                         <tbody>
                             {workflows.map((wf) => (
-                                <tr data-workflow-id={wf.id} data-target={wf.target}>
+                                <tr data-workflow-id={wf.id} data-target={wf.target} data-status={wf.status}
+                                    data-start={wf.start} data-type={wf.type}>
                                     <td style="padding-left: 0.75rem;">
                                         <input type="checkbox" class="row-checkbox" />
                                     </td>
                                     <td>
                                         <span class={`status-pill ${wf.status}`}>
                                             <span class={`status-dot ${wf.status === 'running' ? 'pulse' : ''}`}></span>
-                                            {wf.status === 'running' ? 'Running' : wf.status === 'failed' ? 'Failed' : 'Completed'}
+                                            {wf.status === 'running' ? 'Running' :
+                                             wf.status === 'failed' ? 'Failed' :
+                                             wf.status === 'terminated' ? 'Terminated' :
+                                             wf.status === 'cancelled' ? 'Cancelled' : 'Completed'}
                                         </span>
                                     </td>
                                     <td>
                                         <a href={`/workflow/${wf.runId}`} class="cell-id" title={wf.id}>{truncateId(wf.id)}</a>
                                     </td>
+                                    <td>
+                                        <span class="cell-runid" title={wf.runId}>{wf.runId.slice(0, 8)}…</span>
+                                    </td>
+                                    <td class="cell-type">{wf.type}</td>
                                     <td class="cell-type">{wf.target}</td>
-                                    <td>
-                                        <span style="color: var(--text-muted); font-size: 0.78rem;">
-                                            {wf.phase || '—'}
-                                        </span>
+                                    <td class="cell-time" title={formatDateTime(wf.start)}>
+                                        {formatDateTime(wf.start)}
                                     </td>
-                                    <td>
-                                        <div style="display: flex; align-items: center; gap: 0.5rem; min-width: 120px;">
-                                            <div class="progress-bar" style="flex: 1; max-width: 80px;">
-                                                <div class="progress-bar-fill" style={`width: ${(wf.completedAgents / wf.totalAgents) * 100}%`}></div>
-                                            </div>
-                                            <span class="cell-duration">{wf.completedAgents}/{wf.totalAgents}</span>
-                                        </div>
+                                    <td class="cell-time" title={formatDateTime(wf.end)}>
+                                        {formatDateTime(wf.end)}
                                     </td>
-                                    <td class="cell-cost">{wf.costUsd > 0 ? `$${wf.costUsd.toFixed(2)}` : '—'}</td>
                                     <td class="cell-duration">{getElapsed(wf.start, wf.end)}</td>
-                                    <td class="cell-time">{formatTime(wf.start)}</td>
                                 </tr>
                             ))}
                         </tbody>
                     </table>
 
+                    {workflows.length === 0 && (
+                        <div class="empty-state">
+                            <div class="empty-state-icon">⚡</div>
+                            <h3>No workflows found</h3>
+                            <p>
+                                {statusFilter
+                                    ? `No ${statusFilter} workflows. Try a different filter.`
+                                    : 'Start a workflow to see it here.'}
+                            </p>
+                            {statusFilter && (
+                                <a href="/" class="btn btn-secondary" style="margin-top: 0.5rem;">Clear filters</a>
+                            )}
+                        </div>
+                    )}
+
                     <div class="table-footer">
                         <div class="table-footer-left">
                             <span>Showing</span>
-                            <select>
+                            <select id="pageSize">
                                 <option>20</option>
                                 <option>50</option>
                                 <option selected>100</option>
@@ -234,6 +330,40 @@ function truncateId(id: string) {
                 </div>
             </div>
         </main>
+    </div>
+
+    <!-- Start Workflow Modal -->
+    <div class="modal-overlay" id="startWorkflowModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h2>Start Workflow</h2>
+                <button class="btn-icon modal-close" id="closeModal">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">Workflow Type</label>
+                    <input type="text" class="form-input" value="pentestPipelineWorkflow" readonly />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Task Queue</label>
+                    <input type="text" class="form-input" value="shannon-pipeline" readonly />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Target</label>
+                    <input type="text" class="form-input" id="workflowTarget" placeholder="e.g. example.com" />
+                </div>
+                <div class="form-hint">
+                    To start a new workflow, use the Shannon CLI:
+                    <pre class="form-code">npx shannon scan &lt;target&gt;</pre>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="cancelModal">Cancel</button>
+                <a href="https://github.com/KeygraphHQ/shannon#usage" target="_blank" class="btn btn-primary">
+                    View Documentation
+                </a>
+            </div>
+        </div>
     </div>
 
     <!-- Interactive scripts -->
@@ -258,7 +388,9 @@ function truncateId(id: string) {
             document.querySelectorAll('#workflowTable tbody tr').forEach(row => {
                 const id = row.dataset.workflowId?.toLowerCase() || '';
                 const target = row.dataset.target?.toLowerCase() || '';
-                const match = !query || id.includes(query) || target.includes(query);
+                const type = row.dataset.type?.toLowerCase() || '';
+                const status = row.dataset.status?.toLowerCase() || '';
+                const match = !query || id.includes(query) || target.includes(query) || type.includes(query) || status.includes(query);
                 row.style.display = match ? '' : 'none';
             });
         });
@@ -270,5 +402,349 @@ function truncateId(id: string) {
                 cb.checked = checked;
             });
         });
+
+        // ── Dropdown toggles ──────────────────────
+        function setupDropdown(btnId, menuId) {
+            const btn = document.getElementById(btnId);
+            const menu = document.getElementById(menuId);
+            if (!btn || !menu) return;
+
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                // Close all other menus
+                document.querySelectorAll('.dropdown-menu.open').forEach(m => {
+                    if (m !== menu) m.classList.remove('open');
+                });
+                menu.classList.toggle('open');
+            });
+        }
+
+        setupDropdown('filterBtn', 'filterMenu');
+        setupDropdown('sortBtn', 'sortMenu');
+
+        // Close menus on outside click
+        document.addEventListener('click', () => {
+            document.querySelectorAll('.dropdown-menu.open').forEach(m => m.classList.remove('open'));
+        });
+
+        // Prevent menu clicks from closing
+        document.querySelectorAll('.dropdown-menu').forEach(m => {
+            m.addEventListener('click', (e) => e.stopPropagation());
+        });
+
+        // ── Sort functionality ──────────────────────
+        document.querySelectorAll('#sortMenu .dropdown-item').forEach(item => {
+            item.addEventListener('click', () => {
+                const sortBy = item.dataset.sort;
+                const dir = item.dataset.dir;
+                const tbody = document.querySelector('#workflowTable tbody');
+                if (!tbody) return;
+
+                const rows = Array.from(tbody.querySelectorAll('tr'));
+                rows.sort((a, b) => {
+                    let va, vb;
+                    if (sortBy === 'start') {
+                        va = a.dataset.start || '';
+                        vb = b.dataset.start || '';
+                    } else if (sortBy === 'status') {
+                        va = a.dataset.status || '';
+                        vb = b.dataset.status || '';
+                    } else if (sortBy === 'id') {
+                        va = a.dataset.workflowId || '';
+                        vb = b.dataset.workflowId || '';
+                    } else if (sortBy === 'duration') {
+                        const startA = new Date(a.dataset.start || 0).getTime();
+                        const startB = new Date(b.dataset.start || 0).getTime();
+                        va = String(Date.now() - startA);
+                        vb = String(Date.now() - startB);
+                    }
+                    const cmp = (va || '').localeCompare(vb || '', undefined, { numeric: true });
+                    return dir === 'desc' ? -cmp : cmp;
+                });
+
+                rows.forEach(r => tbody.appendChild(r));
+                document.getElementById('sortMenu')?.classList.remove('open');
+            });
+        });
+
+        // ── Start Workflow modal ──────────────────
+        const modal = document.getElementById('startWorkflowModal');
+        document.getElementById('startWorkflowBtn')?.addEventListener('click', () => {
+            modal?.classList.add('open');
+        });
+        document.getElementById('closeModal')?.addEventListener('click', () => {
+            modal?.classList.remove('open');
+        });
+        document.getElementById('cancelModal')?.addEventListener('click', () => {
+            modal?.classList.remove('open');
+        });
+        modal?.addEventListener('click', (e) => {
+            if (e.target === modal) modal.classList.remove('open');
+        });
+
+        // ── Column header sort ──────────────────
+        document.querySelectorAll('.sortable').forEach(th => {
+            th.addEventListener('click', () => {
+                const col = th.dataset.sort;
+                // Toggle sort direction
+                const currentDir = th.dataset.dir || 'desc';
+                const newDir = currentDir === 'desc' ? 'asc' : 'desc';
+                th.dataset.dir = newDir;
+
+                // Update visual
+                document.querySelectorAll('.data-table th').forEach(h => h.classList.remove('sorted'));
+                th.classList.add('sorted');
+                th.textContent = th.textContent.replace(/[↑↓]/, '') + (newDir === 'asc' ? ' ↑' : ' ↓');
+
+                const tbody = document.querySelector('#workflowTable tbody');
+                const rows = Array.from(tbody.querySelectorAll('tr'));
+                rows.sort((a, b) => {
+                    const va = a.dataset.workflowId || '';
+                    const vb = b.dataset.workflowId || '';
+                    const cmp = va.localeCompare(vb, undefined, { numeric: true });
+                    return newDir === 'desc' ? -cmp : cmp;
+                });
+                rows.forEach(r => tbody.appendChild(r));
+            });
+        });
     </script>
 </Base>
+
+<style is:global>
+    /* ── Filter badge in toolbar ──────── */
+    .active-filter-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+        margin-left: 0.5rem;
+        font-size: 0.72rem;
+        font-weight: 600;
+        color: var(--purple-light);
+        background: var(--purple-subtle);
+        padding: 0.15rem 0.5rem;
+        border-radius: var(--radius-full);
+        border: 1px solid rgba(123, 45, 142, 0.2);
+    }
+
+    .btn-badge {
+        font-size: 0.65rem;
+        font-weight: 600;
+        color: var(--purple-light);
+        background: var(--purple-subtle);
+        padding: 0.1rem 0.35rem;
+        border-radius: var(--radius-full);
+        margin-left: 0.25rem;
+    }
+
+    /* ── Dropdown (shared) ──────── */
+    .dropdown {
+        position: relative;
+    }
+
+    .dropdown-menu {
+        display: none;
+        position: absolute;
+        top: 100%;
+        left: 0;
+        margin-top: 4px;
+        min-width: 200px;
+        background: var(--bg-surface);
+        border: 1px solid var(--border-hover);
+        border-radius: var(--radius);
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+        z-index: 100;
+        padding: 0.35rem;
+        backdrop-filter: blur(20px);
+    }
+
+    .dropdown-menu.open {
+        display: block;
+    }
+
+    .dropdown-item {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        width: 100%;
+        padding: 0.5rem 0.75rem;
+        background: none;
+        border: none;
+        border-radius: 6px;
+        color: var(--text);
+        font-size: 0.82rem;
+        font-family: var(--font);
+        cursor: pointer;
+        transition: background 0.15s;
+        text-decoration: none;
+    }
+
+    .dropdown-item:hover {
+        background: rgba(255, 255, 255, 0.06);
+        color: var(--white);
+    }
+
+    .dropdown-item.active-item {
+        background: var(--purple-subtle);
+        color: var(--purple-light);
+    }
+
+    .dropdown-item-icon {
+        font-size: 0.85rem;
+        width: 18px;
+        text-align: center;
+        flex-shrink: 0;
+    }
+
+    .dropdown-divider {
+        height: 1px;
+        background: var(--border);
+        margin: 0.25rem 0;
+    }
+
+    .dropdown-section-label {
+        font-size: 0.62rem;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: var(--text-faint);
+        font-weight: 600;
+        padding: 0.4rem 0.75rem 0.2rem;
+    }
+
+    .dropdown-badge {
+        margin-left: auto;
+        font-size: 0.68rem;
+        font-weight: 600;
+        min-width: 18px;
+        height: 18px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: var(--radius-full);
+        padding: 0 0.35rem;
+    }
+
+    .dropdown-badge.info { background: var(--info-bg); color: var(--info); border: 1px solid var(--info-border); }
+    .dropdown-badge.success { background: var(--success-bg); color: var(--success); border: 1px solid var(--success-border); }
+    .dropdown-badge.error { background: var(--error-bg); color: var(--error); border: 1px solid var(--error-border); }
+
+    /* ── Run ID cell ──────── */
+    .cell-runid {
+        font-family: var(--font-mono);
+        font-size: 0.72rem;
+        color: var(--text-dim);
+    }
+
+    /* ── Modal ──────── */
+    .modal-overlay {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.6);
+        backdrop-filter: blur(4px);
+        z-index: 200;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .modal-overlay.open {
+        display: flex;
+    }
+
+    .modal {
+        background: var(--bg-surface);
+        border: 1px solid var(--border-hover);
+        border-radius: var(--radius-lg);
+        box-shadow: 0 16px 64px rgba(0, 0, 0, 0.5);
+        width: 480px;
+        max-width: 90vw;
+    }
+
+    .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 1.25rem 1.5rem;
+        border-bottom: 1px solid var(--border);
+    }
+
+    .modal-header h2 {
+        font-size: 1rem;
+        font-weight: 600;
+        color: var(--white);
+    }
+
+    .modal-close {
+        color: var(--text-dim);
+        font-size: 1rem;
+    }
+
+    .modal-body {
+        padding: 1.5rem;
+    }
+
+    .modal-footer {
+        display: flex;
+        justify-content: flex-end;
+        gap: 0.5rem;
+        padding: 1rem 1.5rem;
+        border-top: 1px solid var(--border);
+    }
+
+    .form-group {
+        margin-bottom: 1rem;
+    }
+
+    .form-label {
+        display: block;
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: var(--text-muted);
+        margin-bottom: 0.35rem;
+    }
+
+    .form-input {
+        width: 100%;
+        padding: 0.5rem 0.75rem;
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        color: var(--text);
+        font-size: 0.85rem;
+        font-family: var(--font);
+        outline: none;
+        transition: border-color 0.2s;
+    }
+
+    .form-input:focus {
+        border-color: var(--border-active);
+    }
+
+    .form-input[readonly] {
+        color: var(--text-dim);
+        cursor: default;
+    }
+
+    .form-hint {
+        font-size: 0.8rem;
+        color: var(--text-dim);
+        line-height: 1.6;
+        padding: 1rem;
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+    }
+
+    .form-code {
+        display: block;
+        margin-top: 0.5rem;
+        padding: 0.5rem 0.75rem;
+        background: rgba(0, 0, 0, 0.3);
+        border-radius: 6px;
+        font-family: var(--font-mono);
+        font-size: 0.8rem;
+        color: var(--purple-light);
+    }
+</style>
