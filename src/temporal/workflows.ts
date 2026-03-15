@@ -46,6 +46,9 @@ import { ALL_AGENTS } from '../types/agents.js';
 import { toWorkflowSummary } from './summary-mapper.js';
 import { formatWorkflowError } from './workflow-errors.js';
 
+// Re-export continuous workflow so the worker bundles it from a single entry point
+export { continuousPentestWorkflow } from './continuous-workflow.js';
+
 // Retry configuration for production (long intervals for billing recovery)
 const PRODUCTION_RETRY = {
   initialInterval: '5 minutes',

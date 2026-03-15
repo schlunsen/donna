@@ -71,6 +71,28 @@ stop:
 stop-clean:
     ./donna stop CLEAN=true
 
+# ─── Sentinel (Continuous Monitoring) ──────────────────────────────────────────
+
+# Start Sentinel continuous scanning (e.g., just sentinel https://example.com ./repos/app --deploy-key ~/.ssh/donna-deploy)
+sentinel url repo *args:
+    node dist/temporal/continuous-client.js {{url}} {{repo}} {{args}}
+
+# Start Sentinel with a custom schedule (e.g., just sentinel-cron "0 */12 * * *" https://example.com ./repos/app)
+sentinel-cron schedule url repo *args:
+    node dist/temporal/continuous-client.js {{url}} {{repo}} --schedule "{{schedule}}" {{args}}
+
+# Stop a Sentinel workflow by ID
+sentinel-stop id:
+    node dist/temporal/continuous-client.js --stop --workflow-id {{id}}
+
+# Show Sentinel scan history
+sentinel-history:
+    @cat audit-logs/continuous/continuous_scan_history.json 2>/dev/null | python3 -m json.tool || echo "No scan history found"
+
+# Show current Sentinel baseline (tracked findings)
+sentinel-baseline:
+    @cat audit-logs/continuous/continuous_baseline.json 2>/dev/null | python3 -m json.tool || echo "No baseline found (no scans yet)"
+
 # ─── Docker / Infrastructure ────────────────────────────────────────────────────
 
 # Start all containers in the background
@@ -151,6 +173,26 @@ session workspace:
     @cat audit-logs/{{workspace}}/session.json 2>/dev/null | python3 -m json.tool || echo "Session not found: {{workspace}}"
 
 # ─── Repo Management ───────────────────────────────────────────────────────────
+
+# Import a local directory into ./repos/ for scanning (e.g., just import ~/jobs/igl/clovr.cat)
+import path name="":
+    #!/usr/bin/env bash
+    src="{{path}}"
+    # Expand ~ manually
+    src="${src/#\~/$HOME}"
+    if [ ! -d "$src" ]; then echo "Error: $src does not exist"; exit 1; fi
+    # Use provided name or derive from directory name
+    dest="{{name}}"
+    if [ -z "$dest" ]; then dest=$(basename "$src" | tr '.' '-'); fi
+    target="./repos/$dest"
+    if [ -d "$target" ]; then
+        echo "Updating $target ..."
+        rsync -a --delete --exclude='.git' --exclude='node_modules' --exclude='.env' "$src/" "$target/"
+    else
+        echo "Importing $src → $target ..."
+        rsync -a --exclude='.git' --exclude='node_modules' --exclude='.env' "$src/" "$target/"
+    fi
+    echo "✓ Imported to $target (use /repos/$dest in the dashboard)"
 
 # Clone a target repo into ./repos/ (e.g., just clone-repo https://github.com/org/app.git my-app)
 clone-repo url name:

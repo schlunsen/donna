@@ -25,6 +25,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import dotenv from 'dotenv';
 import * as activities from './activities.js';
+import * as continuousActivities from './continuous-activities.js';
 
 dotenv.config();
 
@@ -46,7 +47,7 @@ async function runWorker(): Promise<void> {
     connection,
     namespace: 'default',
     workflowBundle,
-    activities,
+    activities: { ...activities, ...continuousActivities },
     taskQueue: 'donna-pipeline',
     maxConcurrentActivityTaskExecutions: 25, // Support multiple parallel workflows (5 agents × ~5 workflows)
   });
