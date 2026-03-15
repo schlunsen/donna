@@ -183,7 +183,7 @@ export function classifyVulnerability(
 
   // CWE extraction
   const cweMatch = combined.match(/cwe-(\d+)/i);
-  const cweId = cweMatch ? `CWE-${cweMatch[1]}` : null;
+  const cweId = cweMatch?.[1] ? `CWE-${cweMatch[1]}` : null;
 
   // Classification by patterns
   if (/sql\s*injection|sqli|sql\s*i(?:nj)?/i.test(combined)) {
