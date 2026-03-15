@@ -38,6 +38,64 @@ npm run build
 
 **Options:** `CONFIG=<file>` (YAML config), `OUTPUT=<path>` (default: `./audit-logs/`), `WORKSPACE=<name>` (named workspace; auto-resumes if exists), `PIPELINE_TESTING=true` (minimal prompts, 10s retries), `REBUILD=true` (force Docker rebuild), `ROUTER=true` (multi-model routing via [claude-code-router](https://github.com/musistudio/claude-code-router))
 
+## Justfile Commands
+
+The project includes a `justfile` for common tasks. Run `just` to see all available commands.
+
+```bash
+# ── Build ──
+just build              # Build TypeScript (mcp-server + main project)
+just build-mcp          # Build only the MCP server
+just build-main         # Build only the main project
+just build-docker       # Build the Docker worker image
+just build-docker-fresh # Build Docker image without cache
+just install            # Install all npm dependencies
+just clean              # Remove build artifacts (dist/)
+just rebuild            # Clean + install + build
+
+# ── Run ──
+just start <url> <repo>                    # Start a pentest workflow
+just start-ws <url> <repo> <workspace>     # Start with a named workspace
+just start-test <url> <repo>               # Start in pipeline testing mode
+just workspaces                            # List all workspaces
+just logs <id>                             # Tail logs for a workflow
+just stop                                  # Stop all containers
+just stop-clean                            # Stop and remove all data
+
+# ── Docker / Infrastructure ──
+just up                 # Start all containers (build + detach)
+just up-temporal        # Start only Temporal server
+just up-dashboard       # Start only the dashboard
+just up-router          # Start with multi-model router
+just ps                 # Show running containers
+just worker-logs        # Tail worker logs
+just temporal-logs      # Tail Temporal logs
+just dashboard-logs     # Tail dashboard logs
+just restart-worker     # Rebuild and restart the worker
+
+# ── Dashboard Dev ──
+just dashboard-dev      # Run dashboard with hot reload
+just dashboard-build    # Build dashboard for production
+
+# ── Development ──
+just typecheck          # TypeScript type check (no emit)
+just watch              # Watch mode — rebuild on changes
+
+# ── Audit Logs & Reports ──
+just audit-logs         # List audit log directories
+just latest-log         # Show the latest workflow log
+just tail-latest        # Tail the latest log in real-time
+just session <workspace># Show session summary JSON
+
+# ── Utilities ──
+just setup              # Create .env from template
+just doctor             # Check if required tools are installed
+just temporal-ui        # Open Temporal Web UI in browser
+just dashboard-ui       # Open Donna Dashboard in browser
+just repos              # List available repos
+just clone-repo <url> <name>  # Clone a repo into ./repos/
+```
+
 ## Architecture
 
 ### Core Modules

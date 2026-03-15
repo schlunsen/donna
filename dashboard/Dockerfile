@@ -1,5 +1,5 @@
 #
-# Shannon Dashboard — Lightweight Astro SSR container
+# Donna Dashboard — Lightweight Astro SSR container
 #
 
 FROM node:22-slim AS builder
