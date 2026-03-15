@@ -4,3 +4,4 @@ audit-logs/
 credentials/
 dist/
 repos/
+.worktrees/
