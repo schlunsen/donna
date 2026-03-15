@@ -32,6 +32,15 @@ import type { AgentMetrics, ResumeState } from './shared.js';
 import { copyDeliverablesToAudit, type SessionMetadata } from '../audit/utils.js';
 import { readJson, fileExists } from '../utils/file-io.js';
 import { assembleFinalReport, injectModelIntoReport } from '../services/reporting.js';
+import {
+  loadExploitationResults,
+  recordExploitationResults,
+  parseExploitationEvidence,
+  injectPriorAttemptsIntoQueue,
+  buildFeedbackContext,
+  getRetryableEntries,
+  type ExploitAttemptResult,
+} from '../services/exploitation-feedback.js';
 import { AGENTS } from '../session-manager.js';
 import { executeGitCommandWithRetry } from '../services/git-manager.js';
 import type { ResumeAttempt } from '../audit/metrics-tracker.js';
@@ -343,6 +352,90 @@ export async function injectReportMetadataActivity(input: ActivityInput): Promis
   } catch (error) {
     const err = error as Error;
     logger.warn(`Error injecting model into report: ${err.message}`);
+  }
+}
+
+/**
+ * Collect exploitation results from evidence files and persist structured outcome data.
+ *
+ * Parses exploitation evidence markdown to extract attempt results (success/failure/blocked),
+ * records them to exploitation_results.json, and updates calibration statistics.
+ */
+export async function collectExploitationFeedback(
+  input: ActivityInput,
+  vulnType: VulnType,
+  iterationCount: number
+): Promise<{ retryableCount: number; totalAttempts: number }> {
+  const { repoPath } = input;
+  const logger = createActivityLogger();
+
+  try {
+    // Read exploitation evidence file
+    const evidenceFilenames: Record<VulnType, string> = {
+      injection: 'injection_exploitation_evidence.md',
+      xss: 'xss_exploitation_evidence.md',
+      auth: 'auth_exploitation_evidence.md',
+      ssrf: 'ssrf_exploitation_evidence.md',
+      authz: 'authz_exploitation_evidence.md',
+    };
+
+    const evidencePath = path.join(repoPath, 'deliverables', evidenceFilenames[vulnType]);
+
+    if (!(await fileExists(evidencePath))) {
+      logger.info(`No evidence file for ${vulnType}, skipping feedback collection`);
+      return { retryableCount: 0, totalAttempts: 0 };
+    }
+
+    const content = await fs.readFile(evidencePath, 'utf8');
+    const newAttempts: ExploitAttemptResult[] = parseExploitationEvidence(content, vulnType);
+
+    if (newAttempts.length === 0) {
+      logger.info(`No structured results found in ${vulnType} evidence`);
+      return { retryableCount: 0, totalAttempts: 0 };
+    }
+
+    // Record results and update calibration
+    const results = await recordExploitationResults(repoPath, newAttempts, iterationCount, logger);
+
+    // Determine retryable entries
+    const retryable = getRetryableEntries(results, vulnType);
+
+    // If there are retryable entries, inject prior attempts into the queue
+    if (retryable.length > 0) {
+      await injectPriorAttemptsIntoQueue(repoPath, vulnType, results, logger);
+    }
+
+    return { retryableCount: retryable.length, totalAttempts: newAttempts.length };
+  } catch (error) {
+    const err = error as Error;
+    logger.warn(`Error collecting exploitation feedback for ${vulnType}: ${err.message}`);
+    return { retryableCount: 0, totalAttempts: 0 };
+  }
+}
+
+/**
+ * Build feedback context summary for a vulnerability type.
+ * Returns a markdown string that can be injected into prompts.
+ */
+export async function getExploitationFeedbackContext(
+  input: ActivityInput,
+  vulnType: VulnType
+): Promise<{ hasPriorAttempts: boolean; summary: string }> {
+  const { repoPath } = input;
+  const logger = createActivityLogger();
+
+  try {
+    const results = await loadExploitationResults(repoPath, logger);
+    const context = buildFeedbackContext(results, vulnType);
+
+    return {
+      hasPriorAttempts: context.hasPriorAttempts,
+      summary: context.priorAttemptsSummary + (context.calibrationAdvice ? `\n${context.calibrationAdvice}` : ''),
+    };
+  } catch (error) {
+    const err = error as Error;
+    logger.warn(`Error building feedback context for ${vulnType}: ${err.message}`);
+    return { hasPriorAttempts: false, summary: '' };
   }
 }
 

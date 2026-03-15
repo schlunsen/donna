@@ -59,6 +59,8 @@ export type RetryPreset = 'default' | 'subscription';
 export interface PipelineConfig {
   retry_preset?: RetryPreset;
   max_concurrent_pipelines?: number;
+  /** Number of exploitation feedback loop iterations (0 = no retry, 1 = recommended, N = thorough). Default: 0 */
+  feedback_iterations?: number;
 }
 
 export interface DistributedConfig {
