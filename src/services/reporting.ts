@@ -8,6 +8,7 @@ import { fs, path } from 'zx';
 import { PentestError } from './error-handling.js';
 import { ErrorCode } from '../types/errors.js';
 import type { ActivityLogger } from '../types/activity-logger.js';
+import { processAndDeduplicateFindings } from './finding-deduplication.js';
 
 interface DeliverableFile {
   name: string;
@@ -15,7 +16,17 @@ interface DeliverableFile {
   required: boolean;
 }
 
-// Pure function: Assemble final report from specialist deliverables
+/**
+ * Assemble final report from specialist deliverables with deduplication.
+ *
+ * This function:
+ * 1. Reads all exploitation evidence files
+ * 2. Parses individual findings from each file
+ * 3. Deduplicates findings that share the same root cause
+ * 4. Normalizes severity ratings to CVSS 3.1
+ * 5. Generates a summary table with finding counts by severity
+ * 6. Writes both the deduplicated report and the raw concatenated report
+ */
 export async function assembleFinalReport(sourceDir: string, logger: ActivityLogger): Promise<string> {
   const deliverableFiles: DeliverableFile[] = [
     { name: 'Injection', path: 'injection_exploitation_evidence.md', required: false },
@@ -26,6 +37,7 @@ export async function assembleFinalReport(sourceDir: string, logger: ActivityLog
   ];
 
   const sections: string[] = [];
+  const evidenceSections: Array<{ source: string; content: string }> = [];
 
   for (const file of deliverableFiles) {
     const filePath = path.join(sourceDir, 'deliverables', file.path);
@@ -33,6 +45,7 @@ export async function assembleFinalReport(sourceDir: string, logger: ActivityLog
       if (await fs.pathExists(filePath)) {
         const content = await fs.readFile(filePath, 'utf8');
         sections.push(content);
+        evidenceSections.push({ source: file.name, content });
         logger.info(`Added ${file.name} findings`);
       } else if (file.required) {
         throw new PentestError(
@@ -54,15 +67,63 @@ export async function assembleFinalReport(sourceDir: string, logger: ActivityLog
     }
   }
 
-  const finalContent = sections.join('\n\n');
   const deliverablesDir = path.join(sourceDir, 'deliverables');
   const finalReportPath = path.join(deliverablesDir, 'comprehensive_security_assessment_report.md');
 
   try {
     // Ensure deliverables directory exists
     await fs.ensureDir(deliverablesDir);
+
+    // Run deduplication pipeline on parsed findings
+    const {
+      deduplicatedContent,
+      summaryTable,
+      correlationSection,
+      summary,
+      mergedFindings,
+    } = processAndDeduplicateFindings(evidenceSections, logger);
+
+    let finalContent: string;
+
+    if (mergedFindings.length > 0) {
+      // Build report with deduplication metadata
+      const reportParts: string[] = [];
+
+      // Severity summary table
+      reportParts.push(summaryTable);
+
+      // Root-cause correlation section (if any findings were merged)
+      if (correlationSection) {
+        reportParts.push(correlationSection);
+      }
+
+      // Deduplicated findings
+      reportParts.push(deduplicatedContent);
+
+      // Original evidence sections (preserved for the report agent)
+      reportParts.push('---\n');
+      reportParts.push('## Original Evidence Sections\n');
+      reportParts.push('> The following sections contain the raw evidence from each exploitation agent.\n');
+      reportParts.push(sections.join('\n\n'));
+
+      finalContent = reportParts.join('\n\n');
+
+      logger.info(
+        `Deduplication complete: ${summary.total} unique findings ` +
+        `(${summary.deduplicated} duplicates merged). ` +
+        `Critical: ${summary.critical}, High: ${summary.high}, ` +
+        `Medium: ${summary.medium}, Low: ${summary.low}`
+      );
+    } else {
+      // No structured findings found — fall back to simple concatenation
+      finalContent = sections.join('\n\n');
+      logger.info('No structured findings found; using raw concatenation');
+    }
+
     await fs.writeFile(finalReportPath, finalContent);
     logger.info(`Final report assembled at ${finalReportPath}`);
+
+    return finalContent;
   } catch (error) {
     const err = error as Error;
     throw new PentestError(
@@ -72,8 +133,6 @@ export async function assembleFinalReport(sourceDir: string, logger: ActivityLog
       { finalReportPath, originalError: err.message }
     );
   }
-
-  return finalContent;
 }
 
 /**
