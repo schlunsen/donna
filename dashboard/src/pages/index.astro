@@ -332,36 +332,41 @@ if (periodFilter === 'hour') activeFilterLabel = 'Last Hour';
         </main>
     </div>
 
-    <!-- Start Workflow Modal -->
+    <!-- Start Scan Modal -->
     <div class="modal-overlay" id="startWorkflowModal">
         <div class="modal">
             <div class="modal-header">
-                <h2>Start Workflow</h2>
+                <h2>Start Scan</h2>
                 <button class="btn-icon modal-close" id="closeModal">✕</button>
             </div>
             <div class="modal-body">
                 <div class="form-group">
-                    <label class="form-label">Workflow Type</label>
-                    <input type="text" class="form-input" value="pentestPipelineWorkflow" readonly />
+                    <label class="form-label">Target URL</label>
+                    <input type="url" class="form-input" id="workflowTarget" placeholder="https://example.com" required />
                 </div>
                 <div class="form-group">
-                    <label class="form-label">Task Queue</label>
-                    <input type="text" class="form-input" value="donna-pipeline" readonly />
+                    <label class="form-label">Repository Path</label>
+                    <input type="text" class="form-input" id="workflowRepoPath" placeholder="/repos/my-app" required />
+                    <small style="color: var(--text-muted); font-size: 0.75rem;">
+                        Path to the target's source code repository on the worker
+                    </small>
                 </div>
-                <div class="form-group">
-                    <label class="form-label">Target</label>
-                    <input type="text" class="form-input" id="workflowTarget" placeholder="e.g. example.com" />
+                <div class="form-group" style="display: flex; align-items: center; gap: 0.5rem;">
+                    <input type="checkbox" id="workflowTestingMode" />
+                    <label class="form-label" for="workflowTestingMode" style="margin: 0;">
+                        Pipeline testing mode
+                    </label>
+                    <small style="color: var(--text-muted); font-size: 0.75rem;">(minimal prompts, faster)</small>
                 </div>
-                <div class="form-hint">
-                    To start a new workflow, use the Donna CLI:
-                    <pre class="form-code">npx donna scan &lt;target&gt;</pre>
-                </div>
+                <div id="startError" style="display: none; color: var(--error); font-size: 0.85rem; margin-top: 0.5rem; padding: 0.5rem; background: rgba(255,0,0,0.08); border-radius: 6px;"></div>
+                <div id="startSuccess" style="display: none; color: var(--success); font-size: 0.85rem; margin-top: 0.5rem; padding: 0.5rem; background: rgba(0,255,0,0.08); border-radius: 6px;"></div>
             </div>
             <div class="modal-footer">
                 <button class="btn btn-secondary" id="cancelModal">Cancel</button>
-                <a href="https://github.com/KeygraphHQ/donna#usage" target="_blank" class="btn btn-primary">
-                    View Documentation
-                </a>
+                <button class="btn btn-primary" id="submitWorkflow">
+                    <span id="submitLabel">⚡ Start Scan</span>
+                    <span id="submitSpinner" style="display: none;">Starting…</span>
+                </button>
             </div>
         </div>
     </div>
@@ -467,9 +472,21 @@ if (periodFilter === 'hour') activeFilterLabel = 'Last Hour';
             });
         });
 
-        // ── Start Workflow modal ──────────────────
+        // ── Start Scan modal ──────────────────
         const modal = document.getElementById('startWorkflowModal');
+        const startError = document.getElementById('startError');
+        const startSuccess = document.getElementById('startSuccess');
+
+        function resetModalState() {
+            if (startError) { startError.style.display = 'none'; startError.textContent = ''; }
+            if (startSuccess) { startSuccess.style.display = 'none'; startSuccess.textContent = ''; }
+            document.getElementById('submitLabel').style.display = '';
+            document.getElementById('submitSpinner').style.display = 'none';
+            document.getElementById('submitWorkflow').disabled = false;
+        }
+
         document.getElementById('startWorkflowBtn')?.addEventListener('click', () => {
+            resetModalState();
             modal?.classList.add('open');
         });
         document.getElementById('closeModal')?.addEventListener('click', () => {
@@ -480,6 +497,53 @@ if (periodFilter === 'hour') activeFilterLabel = 'Last Hour';
         });
         modal?.addEventListener('click', (e) => {
             if (e.target === modal) modal.classList.remove('open');
+        });
+
+        // Submit scan
+        document.getElementById('submitWorkflow')?.addEventListener('click', async () => {
+            const webUrl = document.getElementById('workflowTarget')?.value?.trim();
+            const repoPath = document.getElementById('workflowRepoPath')?.value?.trim();
+            const pipelineTestingMode = document.getElementById('workflowTestingMode')?.checked || false;
+
+            if (!webUrl || !repoPath) {
+                startError.textContent = 'Target URL and Repository Path are required.';
+                startError.style.display = 'block';
+                return;
+            }
+
+            // Show loading state
+            startError.style.display = 'none';
+            startSuccess.style.display = 'none';
+            document.getElementById('submitLabel').style.display = 'none';
+            document.getElementById('submitSpinner').style.display = '';
+            document.getElementById('submitWorkflow').disabled = true;
+
+            try {
+                const res = await fetch('/api/workflows', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ webUrl, repoPath, pipelineTestingMode }),
+                });
+                const data = await res.json();
+
+                if (!res.ok) {
+                    throw new Error(data.error || `HTTP ${res.status}`);
+                }
+
+                startSuccess.innerHTML = `Scan started! Workflow: <strong>${data.workflowId}</strong>. Redirecting…`;
+                startSuccess.style.display = 'block';
+
+                // Redirect to the workflow detail page after a short delay
+                setTimeout(() => {
+                    window.location.href = `/workflow/${data.runId}`;
+                }, 1500);
+            } catch (err) {
+                startError.textContent = err.message || 'Failed to start scan.';
+                startError.style.display = 'block';
+                document.getElementById('submitLabel').style.display = '';
+                document.getElementById('submitSpinner').style.display = 'none';
+                document.getElementById('submitWorkflow').disabled = false;
+            }
         });
 
         // ── Column header sort ──────────────────

@@ -137,6 +137,37 @@ export async function getWorkflowProgress(
 }
 
 /**
+ * Start a new pentest pipeline workflow.
+ */
+export async function startWorkflow(options: {
+  webUrl: string;
+  repoPath: string;
+  pipelineTestingMode?: boolean;
+}): Promise<{ workflowId: string; runId: string }> {
+  const client = await getTemporalClient();
+
+  // Build a workflow ID from the hostname + timestamp
+  const hostname = new URL(options.webUrl).hostname.replace(/[^a-zA-Z0-9-]/g, '_');
+  const workflowId = `${hostname}_donna-${Date.now()}`;
+
+  const input = {
+    webUrl: options.webUrl,
+    repoPath: options.repoPath,
+    workflowId,
+    sessionId: workflowId,
+    ...(options.pipelineTestingMode && { pipelineTestingMode: true }),
+  };
+
+  const handle = await client.workflow.start('pentestPipelineWorkflow', {
+    taskQueue: 'donna-pipeline',
+    workflowId,
+    args: [input],
+  });
+
+  return { workflowId, runId: handle.firstExecutionRunId };
+}
+
+/**
  * List workflows enriched with progress data for running ones.
  */
 export async function listWorkflowsWithProgress(options?: {
