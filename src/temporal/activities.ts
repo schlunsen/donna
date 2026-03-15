@@ -159,7 +159,7 @@ async function runAgentActivity(
       inputTokens: null,
       outputTokens: null,
       costUsd: endResult.cost_usd,
-      numTurns: null,
+      numTurns: endResult.turns ?? null,
       model: endResult.model,
     };
   } catch (error) {

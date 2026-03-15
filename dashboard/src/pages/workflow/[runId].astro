@@ -188,7 +188,17 @@ function formatEventTime(iso: string | null) {
     });
 }
 
-const agents = progress?.agentMetrics ? Object.values(progress.agentMetrics) : [];
+const agents = progress?.agentMetrics
+    ? Object.entries(progress.agentMetrics).map(([name, m]) => ({
+        agentName: name,
+        model: m.model || '—',
+        durationMs: m.durationMs,
+        costUsd: m.costUsd ?? 0,
+        turns: m.numTurns ?? 0,
+        success: progress.completedAgents?.includes(name) ?? false,
+        error: progress.failedAgent === name ? progress.error : undefined,
+    }))
+    : [];
 ---
 
 <Base title={`${wf?.workflowId || 'Workflow'} — Donna`}>

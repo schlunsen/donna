@@ -212,6 +212,7 @@ export class AgentExecutionService {
       duration_ms: result.duration,
       cost_usd: result.cost || 0,
       success: true,
+      turns: result.turns,
       model: result.model,
       ...(commitHash && { checkpoint: commitHash }),
     };
@@ -234,6 +235,7 @@ export class AgentExecutionService {
       duration_ms: opts.result.duration,
       cost_usd: opts.result.cost || 0,
       success: false,
+      turns: opts.result.turns,
       model: opts.result.model,
       error: opts.errorMessage,
     };

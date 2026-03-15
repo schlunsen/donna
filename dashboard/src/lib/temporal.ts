@@ -18,13 +18,12 @@ export interface PipelineSummary {
 }
 
 export interface AgentMetrics {
-  agentName: string;
-  model: string;
   durationMs: number;
-  costUsd: number;
-  turns: number;
-  success: boolean;
-  error?: string;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  costUsd: number | null;
+  numTurns: number | null;
+  model?: string | undefined;
 }
 
 export interface PipelineProgress {
