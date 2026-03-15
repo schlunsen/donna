@@ -37,8 +37,9 @@ import {
   recordExploitationResults,
   parseExploitationEvidence,
   injectPriorAttemptsIntoQueue,
-  buildFeedbackContext,
   getRetryableEntries,
+  renderFeedbackReportSection,
+  EVIDENCE_FILENAMES,
   type ExploitAttemptResult,
 } from '../services/exploitation-feedback.js';
 import { AGENTS } from '../session-manager.js';
@@ -370,16 +371,7 @@ export async function collectExploitationFeedback(
   const logger = createActivityLogger();
 
   try {
-    // Read exploitation evidence file
-    const evidenceFilenames: Record<VulnType, string> = {
-      injection: 'injection_exploitation_evidence.md',
-      xss: 'xss_exploitation_evidence.md',
-      auth: 'auth_exploitation_evidence.md',
-      ssrf: 'ssrf_exploitation_evidence.md',
-      authz: 'authz_exploitation_evidence.md',
-    };
-
-    const evidencePath = path.join(repoPath, 'deliverables', evidenceFilenames[vulnType]);
+    const evidencePath = path.join(repoPath, 'deliverables', EVIDENCE_FILENAMES[vulnType]);
 
     if (!(await fileExists(evidencePath))) {
       logger.info(`No evidence file for ${vulnType}, skipping feedback collection`);
@@ -414,28 +406,36 @@ export async function collectExploitationFeedback(
 }
 
 /**
- * Build feedback context summary for a vulnerability type.
- * Returns a markdown string that can be injected into prompts.
+ * Append exploitation feedback metadata to the final report.
+ *
+ * Reads exploitation_results.json and appends a calibration/stats section
+ * to the comprehensive report so reviewers can see exploitation coverage.
  */
-export async function getExploitationFeedbackContext(
-  input: ActivityInput,
-  vulnType: VulnType
-): Promise<{ hasPriorAttempts: boolean; summary: string }> {
+export async function appendFeedbackToReport(input: ActivityInput): Promise<void> {
   const { repoPath } = input;
   const logger = createActivityLogger();
 
   try {
     const results = await loadExploitationResults(repoPath, logger);
-    const context = buildFeedbackContext(results, vulnType);
+    const section = renderFeedbackReportSection(results);
 
-    return {
-      hasPriorAttempts: context.hasPriorAttempts,
-      summary: context.priorAttemptsSummary + (context.calibrationAdvice ? `\n${context.calibrationAdvice}` : ''),
-    };
+    if (!section) {
+      logger.info('No exploitation feedback data to append to report');
+      return;
+    }
+
+    const reportPath = path.join(repoPath, 'deliverables', 'comprehensive_security_assessment_report.md');
+    if (!(await fileExists(reportPath))) {
+      logger.warn('Final report not found, skipping feedback metadata append');
+      return;
+    }
+
+    const existing = await fs.readFile(reportPath, 'utf8');
+    await fs.writeFile(reportPath, existing + '\n\n' + section);
+    logger.info('Appended exploitation feedback metadata to final report');
   } catch (error) {
     const err = error as Error;
-    logger.warn(`Error building feedback context for ${vulnType}: ${err.message}`);
-    return { hasPriorAttempts: false, summary: '' };
+    logger.warn(`Error appending feedback to report: ${err.message}`);
   }
 }
 
