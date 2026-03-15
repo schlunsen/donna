@@ -32,6 +32,16 @@ import type { AgentMetrics, ResumeState } from './shared.js';
 import { copyDeliverablesToAudit, type SessionMetadata } from '../audit/utils.js';
 import { readJson, fileExists } from '../utils/file-io.js';
 import { assembleFinalReport, injectModelIntoReport } from '../services/reporting.js';
+import {
+  loadExploitationResults,
+  recordExploitationResults,
+  parseExploitationEvidence,
+  injectPriorAttemptsIntoQueue,
+  getRetryableEntries,
+  renderFeedbackReportSection,
+  EVIDENCE_FILENAMES,
+  type ExploitAttemptResult,
+} from '../services/exploitation-feedback.js';
 import { AGENTS } from '../session-manager.js';
 import { executeGitCommandWithRetry } from '../services/git-manager.js';
 import type { ResumeAttempt } from '../audit/metrics-tracker.js';
@@ -343,6 +353,89 @@ export async function injectReportMetadataActivity(input: ActivityInput): Promis
   } catch (error) {
     const err = error as Error;
     logger.warn(`Error injecting model into report: ${err.message}`);
+  }
+}
+
+/**
+ * Collect exploitation results from evidence files and persist structured outcome data.
+ *
+ * Parses exploitation evidence markdown to extract attempt results (success/failure/blocked),
+ * records them to exploitation_results.json, and updates calibration statistics.
+ */
+export async function collectExploitationFeedback(
+  input: ActivityInput,
+  vulnType: VulnType,
+  iterationCount: number
+): Promise<{ retryableCount: number; totalAttempts: number }> {
+  const { repoPath } = input;
+  const logger = createActivityLogger();
+
+  try {
+    const evidencePath = path.join(repoPath, 'deliverables', EVIDENCE_FILENAMES[vulnType]);
+
+    if (!(await fileExists(evidencePath))) {
+      logger.info(`No evidence file for ${vulnType}, skipping feedback collection`);
+      return { retryableCount: 0, totalAttempts: 0 };
+    }
+
+    const content = await fs.readFile(evidencePath, 'utf8');
+    const newAttempts: ExploitAttemptResult[] = parseExploitationEvidence(content, vulnType);
+
+    if (newAttempts.length === 0) {
+      logger.info(`No structured results found in ${vulnType} evidence`);
+      return { retryableCount: 0, totalAttempts: 0 };
+    }
+
+    // Record results and update calibration
+    const results = await recordExploitationResults(repoPath, newAttempts, iterationCount, logger);
+
+    // Determine retryable entries
+    const retryable = getRetryableEntries(results, vulnType);
+
+    // If there are retryable entries, inject prior attempts into the queue
+    if (retryable.length > 0) {
+      await injectPriorAttemptsIntoQueue(repoPath, vulnType, results, logger);
+    }
+
+    return { retryableCount: retryable.length, totalAttempts: newAttempts.length };
+  } catch (error) {
+    const err = error as Error;
+    logger.warn(`Error collecting exploitation feedback for ${vulnType}: ${err.message}`);
+    return { retryableCount: 0, totalAttempts: 0 };
+  }
+}
+
+/**
+ * Append exploitation feedback metadata to the final report.
+ *
+ * Reads exploitation_results.json and appends a calibration/stats section
+ * to the comprehensive report so reviewers can see exploitation coverage.
+ */
+export async function appendFeedbackToReport(input: ActivityInput): Promise<void> {
+  const { repoPath } = input;
+  const logger = createActivityLogger();
+
+  try {
+    const results = await loadExploitationResults(repoPath, logger);
+    const section = renderFeedbackReportSection(results);
+
+    if (!section) {
+      logger.info('No exploitation feedback data to append to report');
+      return;
+    }
+
+    const reportPath = path.join(repoPath, 'deliverables', 'comprehensive_security_assessment_report.md');
+    if (!(await fileExists(reportPath))) {
+      logger.warn('Final report not found, skipping feedback metadata append');
+      return;
+    }
+
+    const existing = await fs.readFile(reportPath, 'utf8');
+    await fs.writeFile(reportPath, existing + '\n\n' + section);
+    logger.info('Appended exploitation feedback metadata to final report');
+  } catch (error) {
+    const err = error as Error;
+    logger.warn(`Error appending feedback to report: ${err.message}`);
   }
 }
 

@@ -450,6 +450,89 @@ export async function pentestPipelineWorkflow(
     state.currentAgent = null;
     await a.logPhaseTransition(activityInput, 'vulnerability-exploitation', 'complete');
 
+    // === Exploitation Feedback Loop (Optional) ===
+    // Collect exploitation results, inject prior attempts into queues, and optionally
+    // re-run exploitation agents with refined context. Controlled by feedback_iterations config.
+    // Default: 0 iterations (current one-pass behavior preserved).
+    const feedbackIterations = input.pipelineConfig?.feedback_iterations ?? 0;
+    let feedbackWasRun = false;
+
+    if (feedbackIterations > 0) {
+      state.currentPhase = 'exploitation-feedback';
+      state.currentAgent = null;
+      await a.logPhaseTransition(activityInput, 'exploitation-feedback', 'start');
+
+      const vulnTypes: VulnType[] = ['injection', 'xss', 'auth', 'ssrf', 'authz'];
+
+      for (let iteration = 1; iteration <= feedbackIterations; iteration++) {
+        log.info(`Exploitation feedback loop iteration ${iteration}/${feedbackIterations}`);
+
+        // 1. Collect feedback from all exploit evidence files (parallel, non-blocking)
+        const feedbackSettled = await Promise.allSettled(
+          vulnTypes.map((vt) => a.collectExploitationFeedback(activityInput, vt, iteration))
+        );
+
+        // Extract successful results, log failures but continue
+        const feedbackResults: Array<{ retryableCount: number; totalAttempts: number }> = [];
+        for (let k = 0; k < feedbackSettled.length; k++) {
+          const settled = feedbackSettled[k]!;
+          if (settled.status === 'fulfilled') {
+            feedbackResults.push(settled.value);
+          } else {
+            log.warn(`Feedback collection failed for ${vulnTypes[k] ?? 'unknown'}: ${settled.reason}`);
+            feedbackResults.push({ retryableCount: 0, totalAttempts: 0 });
+          }
+        }
+
+        feedbackWasRun = true;
+
+        // 2. Check if any pipelines have retryable entries
+        const totalRetryable = feedbackResults.reduce((sum, r) => sum + r.retryableCount, 0);
+
+        if (totalRetryable === 0) {
+          log.info(`No retryable entries found in iteration ${iteration}, ending feedback loop`);
+          break;
+        }
+
+        log.info(`Found ${totalRetryable} retryable entries, re-running exploitation agents`);
+
+        // 3. Re-run exploitation for pipelines with retryable entries
+        const retryConfigs = buildPipelineConfigs();
+        const retryThunks: Array<() => Promise<VulnExploitPipelineResult>> = [];
+
+        for (let j = 0; j < feedbackResults.length; j++) {
+          const fb = feedbackResults[j]!;
+          if (fb.retryableCount > 0) {
+            const config = retryConfigs[j]!;
+            retryThunks.push(async () => {
+              // Only re-run exploitation (skip vuln analysis on retry)
+              const exploitMetrics = await config.runExploit();
+              return {
+                vulnType: config.vulnType,
+                vulnMetrics: null,
+                exploitMetrics,
+                exploitDecision: { shouldExploit: true, vulnerabilityCount: fb.retryableCount },
+                error: null,
+              };
+            });
+          }
+        }
+
+        if (retryThunks.length > 0) {
+          const retryResults = await runWithConcurrencyLimit(retryThunks, maxConcurrent);
+          // Update metrics from retry (don't overwrite completion state)
+          for (const result of retryResults) {
+            if (result.status === 'fulfilled' && result.value.exploitMetrics) {
+              const key = `${result.value.vulnType}-exploit-retry-${iteration}`;
+              state.agentMetrics[key] = result.value.exploitMetrics;
+            }
+          }
+        }
+      }
+
+      await a.logPhaseTransition(activityInput, 'exploitation-feedback', 'complete');
+    }
+
     // === Phase 5: Reporting ===
     if (!shouldSkip('report')) {
       state.currentPhase = 'reporting';
@@ -465,6 +548,11 @@ export async function pentestPipelineWorkflow(
 
       // Inject model metadata into the final report
       await a.injectReportMetadataActivity(activityInput);
+
+      // Append exploitation feedback metadata if feedback loop was used
+      if (feedbackWasRun) {
+        await a.appendFeedbackToReport(activityInput);
+      }
 
       await a.logPhaseTransition(activityInput, 'reporting', 'complete');
     } else {
