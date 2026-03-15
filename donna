@@ -1,5 +1,5 @@
 #!/bin/bash
-# Shannon CLI - AI Penetration Testing Framework
+# Donna CLI - AI Penetration Testing Framework
 
 set -e
 
@@ -30,21 +30,21 @@ fi
 show_help() {
   cat << 'EOF'
 
-  ███████╗██╗  ██╗ █████╗ ███╗   ██╗███╗   ██╗ ██████╗ ███╗   ██╗
-  ██╔════╝██║  ██║██╔══██╗████╗  ██║████╗  ██║██╔═══██╗████╗  ██║
-  ███████╗███████║███████║██╔██╗ ██║██╔██╗ ██║██║   ██║██╔██╗ ██║
-  ╚════██║██╔══██║██╔══██║██║╚██╗██║██║╚██╗██║██║   ██║██║╚██╗██║
-  ███████║██║  ██║██║  ██║██║ ╚████║██║ ╚████║╚██████╔╝██║ ╚████║
-  ╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═══╝╚═╝  ╚═══╝ ╚═════╝ ╚═╝  ╚═══╝
+  ██████╗  ██████╗ ███╗   ██╗███╗   ██╗ █████╗
+  ██╔══██╗██╔═══██╗████╗  ██║████╗  ██║██╔══██╗
+  ██║  ██║██║   ██║██╔██╗ ██║██╔██╗ ██║███████║
+  ██║  ██║██║   ██║██║╚██╗██║██║╚██╗██║██╔══██║
+  ██████╔╝╚██████╔╝██║ ╚████║██║ ╚████║██║  ██║
+  ╚═════╝  ╚═════╝ ╚═╝  ╚═══╝╚═╝  ╚═══╝╚═╝  ╚═╝
 
            AI Penetration Testing Framework
 
 Usage:
-  ./shannon start URL=<url> REPO=<name>   Start a pentest workflow
-  ./shannon workspaces                    List all workspaces
-  ./shannon logs ID=<workflow-id>         Tail logs for a specific workflow
-  ./shannon stop                          Stop all containers
-  ./shannon help                          Show this help message
+  ./donna start URL=<url> REPO=<name>   Start a pentest workflow
+  ./donna workspaces                    List all workspaces
+  ./donna logs ID=<workflow-id>         Tail logs for a specific workflow
+  ./donna stop                          Stop all containers
+  ./donna help                          Show this help message
 
 Options for 'start':
   REPO=<name>            Folder name under ./repos/ (e.g. REPO=repo-name)
@@ -58,13 +58,13 @@ Options for 'stop':
   CLEAN=true             Remove all data including volumes
 
 Examples:
-  ./shannon start URL=https://example.com REPO=repo-name
-  ./shannon start URL=https://example.com REPO=repo-name WORKSPACE=q1-audit
-  ./shannon start URL=https://example.com REPO=repo-name CONFIG=./config.yaml
-  ./shannon start URL=https://example.com REPO=repo-name OUTPUT=./my-reports
-  ./shannon workspaces
-  ./shannon logs ID=example.com_shannon-1234567890
-  ./shannon stop CLEAN=true
+  ./donna start URL=https://example.com REPO=repo-name
+  ./donna start URL=https://example.com REPO=repo-name WORKSPACE=q1-audit
+  ./donna start URL=https://example.com REPO=repo-name CONFIG=./config.yaml
+  ./donna start URL=https://example.com REPO=repo-name OUTPUT=./my-reports
+  ./donna workspaces
+  ./donna logs ID=example.com_donna-1234567890
+  ./donna stop CLEAN=true
 
 Monitor workflows at http://localhost:8233
 EOF
@@ -109,7 +109,7 @@ ensure_containers() {
   fi
 
   # Need to start containers
-  echo "Starting Shannon containers..."
+  echo "Starting Donna containers..."
   if [ "$REBUILD" = "true" ]; then
     # Force rebuild without cache (use when code changes aren't being picked up)
     echo "Rebuilding with --no-cache..."
@@ -138,7 +138,7 @@ cmd_start() {
   # Validate required vars
   if [ -z "$URL" ] || [ -z "$REPO" ]; then
     echo "ERROR: URL and REPO are required"
-    echo "Usage: ./shannon start URL=<url> REPO=<name>"
+    echo "Usage: ./donna start URL=<url> REPO=<name>"
     exit 1
   fi
 
@@ -243,7 +243,7 @@ cmd_start() {
     # Set ANTHROPIC_BASE_URL to route through router
     export ANTHROPIC_BASE_URL="http://router:3456"
     # Set auth token to match router's APIKEY
-    export ANTHROPIC_AUTH_TOKEN="shannon-router-key"
+    export ANTHROPIC_AUTH_TOKEN="donna-router-key"
   fi
 
   # Ensure audit-logs directory exists with write permissions for container user (UID 1001)
@@ -282,7 +282,7 @@ cmd_logs() {
 
   if [ -z "$ID" ]; then
     echo "ERROR: ID is required"
-    echo "Usage: ./shannon logs ID=<workflow-id>"
+    echo "Usage: ./donna logs ID=<workflow-id>"
     exit 1
   fi
 
@@ -301,9 +301,9 @@ cmd_logs() {
       WORKFLOW_LOG="./audit-logs/${WORKSPACE_ID}/workflow.log"
     fi
 
-    # For named workspace IDs (e.g. workspace_shannon-123), check the workspace name
+    # For named workspace IDs (e.g. workspace_donna-123), check the workspace name
     if [ -z "$WORKFLOW_LOG" ]; then
-      WORKSPACE_ID="${ID%%_shannon-*}"
+      WORKSPACE_ID="${ID%%_donna-*}"
       if [ "$WORKSPACE_ID" != "$ID" ] && [ -f "./audit-logs/${WORKSPACE_ID}/workflow.log" ]; then
         WORKFLOW_LOG="./audit-logs/${WORKSPACE_ID}/workflow.log"
       fi

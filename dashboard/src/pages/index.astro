@@ -36,7 +36,7 @@ try {
         runId: wf.runId,
         status: wf.status,
         type: wf.type,
-        target: wf.progress?.workflowId?.split('_shannon')[0]?.replace(/_/g, '.') || wf.workflowId.split('_shannon')[0]?.replace(/_/g, '.') || '—',
+        target: wf.progress?.workflowId?.split('_donna')[0]?.replace(/_/g, '.') || wf.workflowId.split('_donna')[0]?.replace(/_/g, '.') || '—',
         start: wf.startTime,
         end: wf.closeTime,
         phase: wf.progress?.currentPhase || null,
@@ -102,7 +102,7 @@ if (periodFilter === 'today') activeFilterLabel = 'Today';
 if (periodFilter === 'hour') activeFilterLabel = 'Last Hour';
 ---
 
-<Base title="Workflows — Shannon Dashboard">
+<Base title="Workflows — Donna Dashboard">
     <div class="app-shell">
         <Sidebar activePage="workflows" runningCount={runningCount} failedCount={failedCount} />
 
@@ -346,20 +346,20 @@ if (periodFilter === 'hour') activeFilterLabel = 'Last Hour';
                 </div>
                 <div class="form-group">
                     <label class="form-label">Task Queue</label>
-                    <input type="text" class="form-input" value="shannon-pipeline" readonly />
+                    <input type="text" class="form-input" value="donna-pipeline" readonly />
                 </div>
                 <div class="form-group">
                     <label class="form-label">Target</label>
                     <input type="text" class="form-input" id="workflowTarget" placeholder="e.g. example.com" />
                 </div>
                 <div class="form-hint">
-                    To start a new workflow, use the Shannon CLI:
-                    <pre class="form-code">npx shannon scan &lt;target&gt;</pre>
+                    To start a new workflow, use the Donna CLI:
+                    <pre class="form-code">npx donna scan &lt;target&gt;</pre>
                 </div>
             </div>
             <div class="modal-footer">
                 <button class="btn btn-secondary" id="cancelModal">Cancel</button>
-                <a href="https://github.com/KeygraphHQ/shannon#usage" target="_blank" class="btn btn-primary">
+                <a href="https://github.com/KeygraphHQ/donna#usage" target="_blank" class="btn btn-primary">
                     View Documentation
                 </a>
             </div>

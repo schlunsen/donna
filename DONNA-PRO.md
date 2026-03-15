@@ -1,6 +1,6 @@
-# Shannon Pro
+# Donna Pro
 
-Shannon Pro is Keygraph's comprehensive AppSec platform, combining SAST, SCA, secrets scanning, business logic security testing, and autonomous pentesting in a single correlated workflow:
+Donna Pro is Keygraph's comprehensive AppSec platform, combining SAST, SCA, secrets scanning, business logic security testing, and autonomous pentesting in a single correlated workflow:
 
 - **Agentic static analysis:** CPG-based data flow, SCA with reachability, secrets detection, business logic security testing
 - **Static-dynamic correlation:** static findings are fed into the dynamic pipeline and exploited against the running application, so every reported vulnerability has a working proof-of-concept
@@ -14,13 +14,13 @@ The platform cross-references static and dynamic results to eliminate false posi
 
 Modern engineering teams face two compounding security challenges. First, traditional static analysis tools (SCA, SAST, and secrets scanners) operate without context, producing high volumes of false positives that erode developer trust. Second, penetration testing remains an expensive, periodic exercise that cannot keep pace with continuous deployment. The result is a fragmented security posture where static tools cry wolf, dynamic assessments arrive too late, and engineering teams treat security as compliance theater rather than a source of genuine protection.
 
-Shannon Pro addresses both problems in a single platform by replacing pattern-based static analysis with LLM-powered reasoning and augmenting it with a fully autonomous AI pentester that validates findings at runtime. The platform supports a self-hosted runner model where source code and LLM interactions never leave the customer's infrastructure.
+Donna Pro addresses both problems in a single platform by replacing pattern-based static analysis with LLM-powered reasoning and augmenting it with a fully autonomous AI pentester that validates findings at runtime. The platform supports a self-hosted runner model where source code and LLM interactions never leave the customer's infrastructure.
 
 ---
 
 ## Platform Architecture Overview
 
-Shannon Pro operates as a two-stage pipeline: agentic static analysis of the codebase, followed by autonomous dynamic penetration testing against the running application. Findings from both stages are correlated to produce a unified, high-confidence result set.
+Donna Pro operates as a two-stage pipeline: agentic static analysis of the codebase, followed by autonomous dynamic penetration testing against the running application. Findings from both stages are correlated to produce a unified, high-confidence result set.
 
 ---
 
@@ -30,7 +30,7 @@ The static analysis stage performs comprehensive code-level security assessment 
 
 ## SAST: Data Flow Analysis
 
-Shannon Pro transforms the target codebase into a Code Property Graph (CPG) that combines the abstract syntax tree, control flow graph, and program dependence graph into a unified structure. Nodes represent program constructs (such as expressions, statements, and declarations), and edges capture syntactic, control-flow, and data-dependence relationships. The analysis proceeds in three phases.
+Donna Pro transforms the target codebase into a Code Property Graph (CPG) that combines the abstract syntax tree, control flow graph, and program dependence graph into a unified structure. Nodes represent program constructs (such as expressions, statements, and declarations), and edges capture syntactic, control-flow, and data-dependence relationships. The analysis proceeds in three phases.
 
 ### Phase 1: Source and Sink Extraction
 
@@ -38,9 +38,9 @@ For each vulnerability type, the system identifies sources (where untrusted data
 
 ### Phase 2: Path Tracing with Contextual Reasoning
 
-This is where Shannon Pro's approach differs fundamentally from traditional SAST. The system traces backward from each sink toward potential sources. At every node along the path, an LLM analyzes whether sanitization is applied at that exact point and whether that sanitization is sufficient for this specific vulnerability in this specific context.
+This is where Donna Pro's approach differs fundamentally from traditional SAST. The system traces backward from each sink toward potential sources. At every node along the path, an LLM analyzes whether sanitization is applied at that exact point and whether that sanitization is sufficient for this specific vulnerability in this specific context.
 
-The key insight is that security fixes are context-dependent. A function that makes data safe for one SQL query might not protect a different query. A custom sanitizer that a team wrote will not be recognized by pattern-based tools. Traditional tools rely on a hard-coded list of safe functions; Shannon Pro reasons about what the code is actually doing, validating whether the specific sanitization at each node actually addresses the specific risk at the specific sink.
+The key insight is that security fixes are context-dependent. A function that makes data safe for one SQL query might not protect a different query. A custom sanitizer that a team wrote will not be recognized by pattern-based tools. Traditional tools rely on a hard-coded list of safe functions; Donna Pro reasons about what the code is actually doing, validating whether the specific sanitization at each node actually addresses the specific risk at the specific sink.
 
 ### Phase 3: Path Validation
 
@@ -60,7 +60,7 @@ Point issues are vulnerabilities where security depends on what is happening at 
 
 ## SAST: Business Logic Security Testing
 
-Traditional security testing tools cannot reason about application-specific correctness properties. Pattern-based scanners look for known vulnerability signatures; conventional fuzzers (AFL, libFuzzer) find crashes and memory errors through input mutation but operate without awareness of business semantics. Neither can determine whether a syntactically valid response actually violates the application's security model. Shannon Pro bridges this gap with automated invariant-based security testing: LLM agents that understand the business semantics of the codebase, automatically discover application-specific invariants, and generate targeted test scenarios that verify whether those invariants hold under adversarial conditions. This approach draws from property-based testing methodology, applied specifically to security-relevant business logic.
+Traditional security testing tools cannot reason about application-specific correctness properties. Pattern-based scanners look for known vulnerability signatures; conventional fuzzers (AFL, libFuzzer) find crashes and memory errors through input mutation but operate without awareness of business semantics. Neither can determine whether a syntactically valid response actually violates the application's security model. Donna Pro bridges this gap with automated invariant-based security testing: LLM agents that understand the business semantics of the codebase, automatically discover application-specific invariants, and generate targeted test scenarios that verify whether those invariants hold under adversarial conditions. This approach draws from property-based testing methodology, applied specifically to security-relevant business logic.
 
 ### Why Business Logic Bugs Are Missed
 
@@ -68,7 +68,7 @@ Pattern-based scanners and traditional SAST are structurally incapable of findin
 
 ### How It Works
 
-Shannon Pro's business logic security testing operates in four phases:
+Donna Pro's business logic security testing operates in four phases:
 
 **Phase 1: Invariant Discovery.** An LLM agent performs a deep semantic analysis of the codebase, examining data models, API endpoints, authorization logic, and domain-specific patterns. Rather than looking for known vulnerability signatures, the agent reasons about the application's intended behavior and derives business logic invariants: rules that must hold for the application to be secure. For a multi-tenant platform, the agent identifies invariants such as "document access must verify that the document belongs to the requesting user's organization." For a financial application, it might identify "a transfer cannot be initiated where the source and destination accounts have the same owner but different privilege levels." These are security properties that no generic scanner can know about because they are unique to each application.
 
@@ -80,7 +80,7 @@ Shannon Pro's business logic security testing operates in four phases:
 
 ### Real-World Example: Cross-Tenant Data Access (CWE-639)
 
-In a production multi-tenant platform, Shannon Pro's business logic security testing discovered a critical Insecure Direct Object Reference (IDOR) vulnerability that no traditional scanner would detect.
+In a production multi-tenant platform, Donna Pro's business logic security testing discovered a critical Insecure Direct Object Reference (IDOR) vulnerability that no traditional scanner would detect.
 
 **Invariant discovered:** Document access must verify that the document belongs to the requesting user's organization.
 
@@ -104,11 +104,11 @@ This class of vulnerability, missing authorization at an organizational boundary
 
 ### What This Means
 
-Business logic security testing extends Shannon Pro's coverage beyond the limits of traditional static and dynamic analysis. Data flow analysis catches injection, XSS, and other input-driven vulnerabilities. Point issue detection catches configuration and cryptographic weaknesses. Business logic security testing catches the authorization failures, state machine violations, and domain-specific logic errors that represent some of the most severe and most commonly missed vulnerabilities in production applications. Together, these three capabilities provide comprehensive SAST coverage across the full vulnerability spectrum.
+Business logic security testing extends Donna Pro's coverage beyond the limits of traditional static and dynamic analysis. Data flow analysis catches injection, XSS, and other input-driven vulnerabilities. Point issue detection catches configuration and cryptographic weaknesses. Business logic security testing catches the authorization failures, state machine violations, and domain-specific logic errors that represent some of the most severe and most commonly missed vulnerabilities in production applications. Together, these three capabilities provide comprehensive SAST coverage across the full vulnerability spectrum.
 
 ## SCA with Reachability Analysis
 
-Traditional SCA flags any library with a known CVE regardless of whether the vulnerable function is called or even reachable. Shannon Pro goes further with a four-step reachability process:
+Traditional SCA flags any library with a known CVE regardless of whether the vulnerable function is called or even reachable. Donna Pro goes further with a four-step reachability process:
 
 1. An AI agent researches each CVE to identify the exact vulnerable function, framework, or conditions.
 2. For framework-level issues, the system checks whether the application actually uses the affected framework in practice.
@@ -117,13 +117,13 @@ Traditional SCA flags any library with a known CVE regardless of whether the vul
 
 ## Secrets Detection
 
-Shannon Pro combines three approaches to secrets scanning. Standard regex-based pattern matching catches known formats (AWS keys, API tokens, etc.). Simultaneously, during the point issue detection phase, LLM-based detection catches secrets that standard patterns miss, such as dynamically constructed credentials, custom credential formats, and obfuscated tokens. The LLM layer also filters out test data, placeholders, and documentation examples that regex scanners frequently flag as false positives.
+Donna Pro combines three approaches to secrets scanning. Standard regex-based pattern matching catches known formats (AWS keys, API tokens, etc.). Simultaneously, during the point issue detection phase, LLM-based detection catches secrets that standard patterns miss, such as dynamically constructed credentials, custom credential formats, and obfuscated tokens. The LLM layer also filters out test data, placeholders, and documentation examples that regex scanners frequently flag as false positives.
 
-For discovered secrets, Shannon Pro performs liveness validation: an agent determines the API context for each credential and attempts to authenticate against the corresponding service. This distinguishes active, exploitable secrets from revoked or rotated credentials, ensuring teams focus remediation effort on secrets that represent real exposure. Liveness checks use read-only API calls (e.g., identity verification endpoints) to avoid triggering side effects or account lockouts, and in the self-hosted runner deployment, all validation occurs within the customer's network.
+For discovered secrets, Donna Pro performs liveness validation: an agent determines the API context for each credential and attempts to authenticate against the corresponding service. This distinguishes active, exploitable secrets from revoked or rotated credentials, ensuring teams focus remediation effort on secrets that represent real exposure. Liveness checks use read-only API calls (e.g., identity verification endpoints) to avoid triggering side effects or account lockouts, and in the self-hosted runner deployment, all validation occurs within the customer's network.
 
 ## Boundary Analysis
 
-For large-scale or monorepo architectures, Shannon Pro's boundary analysis capability allows organizations to scope scans to specific services or portions of the codebase. An agent analyzes the repository and identifies logical boundaries (by service, frontend vs. backend, microservice, etc.). Users review, confirm, and optionally edit the detected boundaries, then select which to include in a scan. Findings are tagged by boundary, enabling clear routing to the responsible team.
+For large-scale or monorepo architectures, Donna Pro's boundary analysis capability allows organizations to scope scans to specific services or portions of the codebase. An agent analyzes the repository and identifies logical boundaries (by service, frontend vs. backend, microservice, etc.). Users review, confirm, and optionally edit the detected boundaries, then select which to include in a scan. Findings are tagged by boundary, enabling clear routing to the responsible team.
 
 ## False Positive Tagging
 
@@ -133,7 +133,7 @@ Any finding can be marked as a false positive. On subsequent scans, the same fin
 
 # Stage 2: Autonomous Dynamic Penetration Testing
 
-Shannon Pro's dynamic testing pipeline mirrors the workflow of a professional human penetration tester, implemented as a multi-agent system powered by the Anthropic Claude Agent SDK. The system operates through five phases using 13 specialized agents.
+Donna Pro's dynamic testing pipeline mirrors the workflow of a professional human penetration tester, implemented as a multi-agent system powered by the Anthropic Claude Agent SDK. The system operates through five phases using 13 specialized agents.
 
 ## Execution Model
 
@@ -169,7 +169,7 @@ If a vulnerability agent's exploitation queue is empty for a given attack domain
 
 Five parallel exploit agents consume the exploitation queues and attempt to verify each hypothesis using full Playwright browser automation. Agents can navigate to endpoints, fill forms with crafted payloads, submit requests, observe responses, take screenshots, and chain multiple requests together to validate complex attack sequences.
 
-**Core principle: POC or it didn't happen.** Shannon Pro never reports a vulnerability without a working proof-of-concept exploit. Exploitation agents classify each finding as EXPLOITED, POTENTIAL, or FALSE POSITIVE. Only EXPLOITED findings (with concrete evidence) make it to the final report. POTENTIAL findings are programmatically stripped before reporting, giving agents a designated space to log uncertain observations without polluting the deliverable.
+**Core principle: POC or it didn't happen.** Donna Pro never reports a vulnerability without a working proof-of-concept exploit. Exploitation agents classify each finding as EXPLOITED, POTENTIAL, or FALSE POSITIVE. Only EXPLOITED findings (with concrete evidence) make it to the final report. POTENTIAL findings are programmatically stripped before reporting, giving agents a designated space to log uncertain observations without polluting the deliverable.
 
 ## Phase 5: Reporting
 
@@ -179,11 +179,11 @@ A reporting agent synthesizes all evidence files into a pentest-grade executive 
 
 # Static-Dynamic Correlation
 
-Shannon Pro's distinguishing capability is the correlation between its static and dynamic analysis stages.
+Donna Pro's distinguishing capability is the correlation between its static and dynamic analysis stages.
 
 ## How AppSec Feeds Into Dynamic Testing
 
-After static analysis completes, findings go through an enrichment phase that adds priority, confidence, and application context. CWEs are mapped to Shannon's five attack domains using a best-fit heuristic. Where a CWE maps to multiple domains (e.g., CWE-918 spans both SSRF and injection contexts), the finding is routed to the most exploitation-relevant agent. CWEs that do not map cleanly to any attack domain, such as certain business logic classes, are routed directly to the exploitation queue with their static analysis context preserved rather than forced into an ill-fitting category. Secrets, data flow findings, point issues, and business logic security testing violations are sent to Shannon's exploitation queue, where domain-specific agents attempt to exploit each finding with real proof-of-concept attacks against the running application.
+After static analysis completes, findings go through an enrichment phase that adds priority, confidence, and application context. CWEs are mapped to Donna's five attack domains using a best-fit heuristic. Where a CWE maps to multiple domains (e.g., CWE-918 spans both SSRF and injection contexts), the finding is routed to the most exploitation-relevant agent. CWEs that do not map cleanly to any attack domain, such as certain business logic classes, are routed directly to the exploitation queue with their static analysis context preserved rather than forced into an ill-fitting category. Secrets, data flow findings, point issues, and business logic security testing violations are sent to Donna's exploitation queue, where domain-specific agents attempt to exploit each finding with real proof-of-concept attacks against the running application.
 
 This correlation means that a data flow vulnerability identified in static analysis (e.g., unsanitized user input reaching a SQL query) is not just reported as a theoretical risk -- it is actively exploited against the live application. Similarly, a business logic invariant violation (e.g., missing cross-tenant authorization) identified by the security testing engine is fed directly into the Authz exploitation agent, which attempts to reproduce the exact cross-organization access scenario against the running application. Confirmed exploits are traced back to their source code location, giving developers both the proof that the vulnerability is real and the exact line of code to fix.
 
@@ -191,17 +191,17 @@ This correlation means that a data flow vulnerability identified in static analy
 
 # Key Technical Capabilities
 
-- **Fully Autonomous Operation:** Shannon Pro handles complex workflows including 2FA/TOTP logins and SSO (e.g., Sign in with Google) without human intervention. TOTP is handled via a dedicated MCP server tool.
-- **White-Box Awareness:** Unlike black-box scanners, Shannon Pro reads the source code to intelligently guide its attack strategy, combining code-level insight with runtime validation.
+- **Fully Autonomous Operation:** Donna Pro handles complex workflows including 2FA/TOTP logins and SSO (e.g., Sign in with Google) without human intervention. TOTP is handled via a dedicated MCP server tool.
+- **White-Box Awareness:** Unlike black-box scanners, Donna Pro reads the source code to intelligently guide its attack strategy, combining code-level insight with runtime validation.
 - **Parallel Processing:** Vulnerability analysis and exploitation phases run concurrently across attack domains, with pipelined parallelism minimizing total execution time.
-- **Tool Orchestration:** Shannon Pro orchestrates existing security tools (e.g., Schemathesis for API testing, Nmap for network discovery) while adding LLM reasoning to interpret results.
+- **Tool Orchestration:** Donna Pro orchestrates existing security tools (e.g., Schemathesis for API testing, Nmap for network discovery) while adding LLM reasoning to interpret results.
 - **Configurable Login Flows:** Authentication configuration specifies login procedures and credentials, which are interpolated into agent prompts for authenticated testing.
 
 ---
 
 # Container Isolation and Data Security
 
-Shannon Pro is engineered with a secure-by-design philosophy to ensure code privacy and isolation across every stage of the pipeline.
+Donna Pro is engineered with a secure-by-design philosophy to ensure code privacy and isolation across every stage of the pipeline.
 
 ## Per-Organization Infrastructure
 
@@ -223,15 +223,15 @@ Isolated workers run in private subnets with org-specific security groups, ensur
 
 ## Self-Hosted Runner
 
-Shannon Pro supports a self-hosted runner deployment model, following the same architecture as GitHub Actions self-hosted runners. The data plane (the runner that clones code, executes scans, and makes all LLM API calls) runs entirely within the customer's infrastructure using the customer's own LLM API keys. Source code never leaves the customer's network, and no code or LLM interactions pass through Keygraph's systems. The control plane (job orchestration, scan scheduling, and the reporting UI) is hosted by Keygraph and receives only aggregate findings to power dashboards, search, and reporting. This separation ensures that Keygraph never has access to customer source code or raw LLM call content.
+Donna Pro supports a self-hosted runner deployment model, following the same architecture as GitHub Actions self-hosted runners. The data plane (the runner that clones code, executes scans, and makes all LLM API calls) runs entirely within the customer's infrastructure using the customer's own LLM API keys. Source code never leaves the customer's network, and no code or LLM interactions pass through Keygraph's systems. The control plane (job orchestration, scan scheduling, and the reporting UI) is hosted by Keygraph and receives only aggregate findings to power dashboards, search, and reporting. This separation ensures that Keygraph never has access to customer source code or raw LLM call content.
 
 ---
 
 # Deployment and Editions
 
-Shannon is offered in two editions to serve different operational needs:
+Donna is offered in two editions to serve different operational needs:
 
-| Feature | Shannon Lite | Shannon Pro |
+| Feature | Donna Lite | Donna Pro |
 | --- | --- | --- |
 | **Licensing** | AGPL-3.0 (open source) | Commercial |
 | **Static Analysis** | Code review prompting | Full agentic static analysis (SAST, SCA, secrets, business logic security testing) |
@@ -247,10 +247,10 @@ Shannon is offered in two editions to serve different operational needs:
 
 # Compliance Integration
 
-Within the broader Keygraph ecosystem, Shannon Pro serves as the primary engine for automated compliance evidence generation. By automating penetration testing and static analysis requirements, Shannon Pro generates real-time evidence for frameworks such as SOC 2 and HIPAA, transforming security testing from a periodic audit obligation into a continuous component of the compliance program.
+Within the broader Keygraph ecosystem, Donna Pro serves as the primary engine for automated compliance evidence generation. By automating penetration testing and static analysis requirements, Donna Pro generates real-time evidence for frameworks such as SOC 2 and HIPAA, transforming security testing from a periodic audit obligation into a continuous component of the compliance program.
 
 ---
 
 # Methodology Standards
 
-Shannon Pro follows AI-assisted white-box testing methodology broadly aligned with OWASP Web Security Testing Guide (WSTG) and OWASP Top 10 standards. All dynamic testing produces confirmed, exploitable findings with reproducible proof-of-concept exploits. Static analysis covers established CWE categories with LLM-powered validation to minimize false positive rates.
+Donna Pro follows AI-assisted white-box testing methodology broadly aligned with OWASP Web Security Testing Guide (WSTG) and OWASP Top 10 standards. All dynamic testing produces confirmed, exploitable findings with reproducible proof-of-concept exploits. Static analysis covers established CWE categories with LLM-powered validation to minimize false positive rates.

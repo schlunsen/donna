@@ -1,5 +1,5 @@
 /**
- * Temporal client for the Shannon dashboard.
+ * Temporal client for the Donna dashboard.
  *
  * Connects to the same Temporal server as the worker and queries
  * workflow state via the getProgress query + list workflows API.

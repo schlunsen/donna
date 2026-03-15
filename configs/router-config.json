@@ -1,6 +1,6 @@
 {
   "HOST": "0.0.0.0",
-  "APIKEY": "shannon-router-key",
+  "APIKEY": "donna-router-key",
   "LOG": true,
   "LOG_LEVEL": "info",
   "NON_INTERACTIVE_MODE": true,

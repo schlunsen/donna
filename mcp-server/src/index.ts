@@ -5,10 +5,10 @@
 // as published by the Free Software Foundation.
 
 /**
- * Shannon Helper MCP Server
+ * Donna Helper MCP Server
  *
  * In-process MCP server providing save_deliverable and generate_totp tools
- * for Shannon penetration testing agents.
+ * for Donna penetration testing agents.
  *
  * Replaces bash script invocations with native tool access.
  *
@@ -21,18 +21,18 @@ import { createSaveDeliverableTool } from './tools/save-deliverable.js';
 import { generateTotpTool } from './tools/generate-totp.js';
 
 /**
- * Create Shannon Helper MCP Server with target directory context
+ * Create Donna Helper MCP Server with target directory context
  *
  * Each workflow should create its own MCP server instance with its targetDir.
  * The save_deliverable tool captures targetDir in a closure, preventing race
  * conditions when multiple workflows run in parallel.
  */
-export function createShannonHelperServer(targetDir: string): ReturnType<typeof createSdkMcpServer> {
+export function createDonnaHelperServer(targetDir: string): ReturnType<typeof createSdkMcpServer> {
   // Create save_deliverable tool with targetDir in closure (no global variable)
   const saveDeliverableTool = createSaveDeliverableTool(targetDir);
 
   return createSdkMcpServer({
-    name: 'shannon-helper',
+    name: 'donna-helper',
     version: '1.0.0',
     tools: [saveDeliverableTool, generateTotpTool],
   });

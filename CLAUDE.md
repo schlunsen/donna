@@ -15,22 +15,22 @@ git clone https://github.com/org/repo.git ./repos/my-repo
 # or symlink: ln -s /path/to/existing/repo ./repos/my-repo
 
 # Run
-./shannon start URL=<url> REPO=my-repo
-./shannon start URL=<url> REPO=my-repo CONFIG=./configs/my-config.yaml
+./donna start URL=<url> REPO=my-repo
+./donna start URL=<url> REPO=my-repo CONFIG=./configs/my-config.yaml
 
 # Workspaces & Resume
-./shannon start URL=<url> REPO=my-repo WORKSPACE=my-audit    # New named workspace
-./shannon start URL=<url> REPO=my-repo WORKSPACE=my-audit    # Resume (same command)
-./shannon start URL=<url> REPO=my-repo WORKSPACE=<auto-name> # Resume auto-named run
-./shannon workspaces                                          # List all workspaces
+./donna start URL=<url> REPO=my-repo WORKSPACE=my-audit    # New named workspace
+./donna start URL=<url> REPO=my-repo WORKSPACE=my-audit    # Resume (same command)
+./donna start URL=<url> REPO=my-repo WORKSPACE=<auto-name> # Resume auto-named run
+./donna workspaces                                          # List all workspaces
 
 # Monitor
-./shannon logs                      # Real-time worker logs
+./donna logs                      # Real-time worker logs
 # Temporal Web UI: http://localhost:8233
 
 # Stop
-./shannon stop                      # Preserves workflow data
-./shannon stop CLEAN=true           # Full cleanup including volumes
+./donna stop                      # Preserves workflow data
+./donna stop CLEAN=true           # Full cleanup including volumes
 
 # Build
 npm run build
@@ -146,14 +146,14 @@ Comments must be **timeless** — no references to this conversation, refactorin
 
 **Core Logic:** `src/session-manager.ts`, `src/ai/claude-executor.ts`, `src/config-parser.ts`, `src/services/`, `src/audit/`
 
-**Config:** `shannon` (CLI), `docker-compose.yml`, `configs/`, `prompts/`
+**Config:** `donna` (CLI), `docker-compose.yml`, `configs/`, `prompts/`
 
 ## Troubleshooting
 
 - **"Repository not found"** — `REPO` must be a folder name inside `./repos/`, not an absolute path. Clone or symlink your repo there first: `ln -s /path/to/repo ./repos/my-repo`
 - **"Temporal not ready"** — Wait for health check or `docker compose logs temporal`
 - **Worker not processing** — Check `docker compose ps`
-- **Reset state** — `./shannon stop CLEAN=true`
+- **Reset state** — `./donna stop CLEAN=true`
 - **Local apps unreachable** — Use `host.docker.internal` instead of `localhost`
 - **Missing tools** — Use `PIPELINE_TESTING=true` to skip nmap/subfinder/whatweb (graceful degradation)
 - **Container permissions** — On Linux, may need `sudo` for docker commands

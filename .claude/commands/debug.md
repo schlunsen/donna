@@ -34,7 +34,7 @@ cat audit-logs/<session>/agents/<latest>.log
 
 ## Step 3: Trace the Call Path
 
-For Shannon, trace through these layers:
+For Donna, trace through these layers:
 
 1. **Temporal Client** → `src/temporal/client.ts` - Workflow initiation
 2. **Workflow** → `src/temporal/workflows.ts` - Pipeline orchestration
@@ -49,7 +49,7 @@ For Shannon, trace through these layers:
 
 ## Step 4: Identify Root Cause
 
-**Common Shannon-specific issues:**
+**Common Donna-specific issues:**
 
 | Symptom | Likely Cause | Fix |
 |---------|--------------|-----|
@@ -83,7 +83,7 @@ git status
 # Check for git locks
 ls -la .git/*.lock
 
-# View recent git operations from Shannon
+# View recent git operations from Donna
 git reflog | head -10
 ```
 
@@ -104,7 +104,7 @@ git reflog | head -10
 npx tsc --noEmit
 
 # Quick validation run
-shannon <URL> <REPO> --pipeline-testing
+donna <URL> <REPO> --pipeline-testing
 ```
 
 **For audit/session issues:**

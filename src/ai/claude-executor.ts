@@ -15,7 +15,7 @@ import { Timer } from '../utils/metrics.js';
 import { formatTimestamp } from '../utils/formatting.js';
 import { AGENT_VALIDATORS, MCP_AGENT_MAPPING } from '../session-manager.js';
 import { AuditSession } from '../audit/index.js';
-import { createShannonHelperServer } from '../../mcp-server/dist/index.js';
+import { createDonnaHelperServer } from '../../mcp-server/dist/index.js';
 import { AGENTS } from '../session-manager.js';
 import type { AgentName } from '../types/index.js';
 
@@ -28,7 +28,7 @@ import { resolveModel, type ModelTier } from './models.js';
 import type { ActivityLogger } from '../types/activity-logger.js';
 
 declare global {
-  var SHANNON_DISABLE_LOADER: boolean | undefined;
+  var DONNA_DISABLE_LOADER: boolean | undefined;
 }
 
 export interface ClaudePromptResult {
@@ -53,7 +53,7 @@ interface StdioMcpServer {
   env: Record<string, string>;
 }
 
-type McpServer = ReturnType<typeof createShannonHelperServer> | StdioMcpServer;
+type McpServer = ReturnType<typeof createDonnaHelperServer> | StdioMcpServer;
 
 // Configures MCP servers for agent execution, with Docker-specific Chromium handling
 function buildMcpServers(
@@ -61,11 +61,11 @@ function buildMcpServers(
   agentName: string | null,
   logger: ActivityLogger
 ): Record<string, McpServer> {
-  // 1. Create the shannon-helper server (always present)
-  const shannonHelperServer = createShannonHelperServer(sourceDir);
+  // 1. Create the donna-helper server (always present)
+  const donnaHelperServer = createDonnaHelperServer(sourceDir);
 
   const mcpServers: Record<string, McpServer> = {
-    'shannon-helper': shannonHelperServer,
+    'donna-helper': donnaHelperServer,
   };
 
   // 2. Look up the agent's Playwright MCP mapping
@@ -79,7 +79,7 @@ function buildMcpServers(
       const userDataDir = `/tmp/${playwrightMcpName}`;
 
       // 3. Configure Playwright MCP args with Docker/local browser handling
-      const isDocker = process.env.SHANNON_DOCKER === 'true';
+      const isDocker = process.env.DONNA_DOCKER === 'true';
 
       const mcpArgs: string[] = [
         '@playwright/mcp@0.0.68',
@@ -230,7 +230,7 @@ export async function runClaudePrompt(
   const execContext = detectExecutionContext(description);
   const progress = createProgressManager(
     { description, useCleanOutput: execContext.useCleanOutput },
-    global.SHANNON_DISABLE_LOADER ?? false
+    global.DONNA_DISABLE_LOADER ?? false
   );
   const auditLogger = createAuditLogger(auditSession);
 
@@ -392,7 +392,7 @@ async function processMessageStream(
   for await (const message of query({ prompt: fullPrompt, options })) {
     // Heartbeat logging when loader is disabled
     const now = Date.now();
-    if (global.SHANNON_DISABLE_LOADER && now - lastHeartbeat > HEARTBEAT_INTERVAL) {
+    if (global.DONNA_DISABLE_LOADER && now - lastHeartbeat > HEARTBEAT_INTERVAL) {
       logger.info(`[${Math.floor((now - timer.startTime) / 1000)}s] ${description} running... (Turn ${turnCount})`);
       lastHeartbeat = now;
     }

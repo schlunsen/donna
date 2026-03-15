@@ -144,7 +144,7 @@ USER pentest
 # Set environment variables
 ENV NODE_ENV=production
 ENV PATH="/usr/local/bin:$PATH"
-ENV SHANNON_DOCKER=true
+ENV DONNA_DOCKER=true
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 ENV PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium-browser
 ENV npm_config_cache=/tmp/.npm
@@ -158,4 +158,4 @@ RUN git config --global user.email "agent@localhost" && \
     git config --global --add safe.directory '*'
 
 # Set entrypoint
-ENTRYPOINT ["node", "dist/shannon.js"]
+ENTRYPOINT ["node", "dist/donna.js"]

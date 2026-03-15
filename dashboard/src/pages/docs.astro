@@ -3,7 +3,7 @@ import Base from '../layouts/Base.astro';
 import Sidebar from '../components/Sidebar.astro';
 ---
 
-<Base title="Docs — Shannon Dashboard">
+<Base title="Docs — Donna Dashboard">
     <div class="app-shell">
         <Sidebar activePage="docs" />
 
@@ -24,7 +24,7 @@ import Sidebar from '../components/Sidebar.astro';
                         <h1 class="page-title">
                             <span class="gradient-text">Documentation</span>
                         </h1>
-                        <p class="page-subtitle">Quick reference for Shannon workflows and dashboard</p>
+                        <p class="page-subtitle">Quick reference for Donna workflows and dashboard</p>
                     </div>
                 </div>
 
@@ -35,14 +35,14 @@ import Sidebar from '../components/Sidebar.astro';
                         <div class="docs-card">
                             <h3>Starting a Workflow</h3>
                             <p>Launch a pentest workflow from the CLI:</p>
-                            <pre><code>./shannon start --target https://example.com \
+                            <pre><code>./donna start --target https://example.com \
   --config configs/default.yml</code></pre>
                         </div>
                         <div class="docs-card">
                             <h3>Resuming a Failed Run</h3>
                             <p>If a workflow fails partway through, resume it:</p>
-                            <pre><code>./shannon resume --workflow-id &lt;id&gt;</code></pre>
-                            <p>Shannon picks up from the last successful agent checkpoint.</p>
+                            <pre><code>./donna resume --workflow-id &lt;id&gt;</code></pre>
+                            <p>Donna picks up from the last successful agent checkpoint.</p>
                         </div>
                         <div class="docs-card">
                             <h3>Viewing Results</h3>
@@ -65,7 +65,7 @@ import Sidebar from '../components/Sidebar.astro';
                         </div>
                         <div class="docs-card">
                             <h3>Agent System</h3>
-                            <p>Shannon uses 13 specialized agents, each powered by Claude. Agents run in isolated Docker containers with controlled tooling.</p>
+                            <p>Donna uses 13 specialized agents, each powered by Claude. Agents run in isolated Docker containers with controlled tooling.</p>
                         </div>
                         <div class="docs-card">
                             <h3>Temporal Backend</h3>

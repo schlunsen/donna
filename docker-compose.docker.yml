@@ -1,5 +1,5 @@
 # Docker-specific overrides (not used with Podman)
-# This file is automatically included by the shannon script when running Docker
+# This file is automatically included by the donna script when running Docker
 services:
   worker:
     extra_hosts:

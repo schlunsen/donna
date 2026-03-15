@@ -1,8 +1,8 @@
 ---
-description: Review code changes for Shannon-specific patterns, security, and common mistakes
+description: Review code changes for Donna-specific patterns, security, and common mistakes
 ---
 
-Review the current changes (staged or working directory) with focus on Shannon-specific patterns and common mistakes.
+Review the current changes (staged or working directory) with focus on Donna-specific patterns and common mistakes.
 
 ## Step 1: Gather Changes
 Run these commands to understand the scope:
@@ -11,7 +11,7 @@ git diff --stat HEAD
 git diff HEAD
 ```
 
-## Step 2: Check Shannon-Specific Patterns
+## Step 2: Check Donna-Specific Patterns
 
 ### Error Handling (CRITICAL)
 - [ ] **All errors use PentestError** - Never use raw `Error`. Use `new PentestError(message, type, retryable, context)`

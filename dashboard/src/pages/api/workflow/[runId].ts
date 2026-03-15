@@ -160,7 +160,7 @@ export const POST: APIRoute = async ({ params, url }) => {
     }
 
     if (action === 'terminate') {
-      await handle.terminate('Terminated via Shannon Dashboard');
+      await handle.terminate('Terminated via Donna Dashboard');
       return new Response(JSON.stringify({ success: true, message: 'Workflow terminated' }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },

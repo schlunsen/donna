@@ -6,9 +6,9 @@
 // as published by the Free Software Foundation.
 
 /**
- * Temporal worker for Shannon pentest pipeline.
+ * Temporal worker for Donna pentest pipeline.
  *
- * Polls the 'shannon-pipeline' task queue and executes activities.
+ * Polls the 'donna-pipeline' task queue and executes activities.
  * Handles up to 25 concurrent activities to support multiple parallel workflows.
  *
  * Usage:
@@ -47,7 +47,7 @@ async function runWorker(): Promise<void> {
     namespace: 'default',
     workflowBundle,
     activities,
-    taskQueue: 'shannon-pipeline',
+    taskQueue: 'donna-pipeline',
     maxConcurrentActivityTaskExecutions: 25, // Support multiple parallel workflows (5 agents × ~5 workflows)
   });
 
@@ -60,8 +60,8 @@ async function runWorker(): Promise<void> {
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
 
-  console.log('Shannon worker started');
-  console.log('Task queue: shannon-pipeline');
+  console.log('Donna worker started');
+  console.log('Task queue: donna-pipeline');
   console.log('Press Ctrl+C to stop\n');
 
   try {

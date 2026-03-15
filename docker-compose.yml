@@ -50,7 +50,7 @@ services:
     security_opt:
       - seccomp:unconfined
 
-  # Shannon Dashboard — custom web UI replacing Temporal's built-in UI
+  # Donna Dashboard — custom web UI replacing Temporal's built-in UI
   dashboard:
     build:
       context: ./dashboard
@@ -66,7 +66,7 @@ services:
       - ./audit-logs:/app/audit-logs:ro
 
   # Optional: claude-code-router for multi-model support
-  # Start with: ROUTER=true ./shannon start ...
+  # Start with: ROUTER=true ./donna start ...
   router:
     image: node:20-slim
     profiles: ["router"]  # Only starts when explicitly requested
