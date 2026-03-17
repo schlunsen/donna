@@ -58,6 +58,33 @@ const MAX_OUTPUT_VALIDATION_RETRIES = 3;
 
 const HEARTBEAT_INTERVAL_MS = 2000;
 
+// Circular buffer size for recent turn messages included in heartbeats
+const TURN_BUFFER_MAX = 50;
+
+/**
+ * Circular buffer that holds the last N turn log entries.
+ * Pushed to by the executor during streaming, read by the heartbeat loop.
+ */
+export class TurnBuffer {
+  private readonly entries: string[] = [];
+  private readonly max: number;
+
+  constructor(max = TURN_BUFFER_MAX) {
+    this.max = max;
+  }
+
+  push(entry: string): void {
+    if (this.entries.length >= this.max) {
+      this.entries.shift();
+    }
+    this.entries.push(entry);
+  }
+
+  getAll(): string[] {
+    return [...this.entries];
+  }
+}
+
 /**
  * Input for all agent activities.
  */
@@ -120,10 +147,18 @@ async function runAgentActivity(
   const startTime = Date.now();
   const attemptNumber = Context.current().info.attempt;
 
+  // Turn buffer - executor pushes turn messages, heartbeat reads them
+  const turnBuffer = new TurnBuffer();
+
   // Heartbeat loop - signals worker is alive to Temporal server
   const heartbeatInterval = setInterval(() => {
     const elapsed = Math.floor((Date.now() - startTime) / 1000);
-    heartbeat({ agent: agentName, elapsedSeconds: elapsed, attempt: attemptNumber });
+    heartbeat({
+      agent: agentName,
+      elapsedSeconds: elapsed,
+      attempt: attemptNumber,
+      recentTurns: turnBuffer.getAll(),
+    });
   }, HEARTBEAT_INTERVAL_MS);
 
   try {
@@ -150,7 +185,8 @@ async function runAgentActivity(
         attemptNumber,
       },
       auditSession,
-      logger
+      logger,
+      turnBuffer
     );
 
     // 4. Return metrics

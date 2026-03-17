@@ -26,6 +26,7 @@ import { createAuditLogger } from './audit-logger.js';
 import { getActualModelName } from './router-utils.js';
 import { resolveModel, type ModelTier } from './models.js';
 import type { ActivityLogger } from '../types/activity-logger.js';
+import type { TurnBuffer } from '../temporal/activities.js';
 
 declare global {
   var DONNA_DISABLE_LOADER: boolean | undefined;
@@ -220,7 +221,8 @@ export async function runClaudePrompt(
   agentName: string | null = null,
   auditSession: AuditSession | null = null,
   logger: ActivityLogger,
-  modelTier: ModelTier = 'medium'
+  modelTier: ModelTier = 'medium',
+  turnBuffer?: TurnBuffer
 ): Promise<ClaudePromptResult> {
   // 1. Initialize timing and prompt
   const timer = new Timer(`agent-${description.toLowerCase().replace(/\s+/g, '-')}`);
@@ -293,7 +295,9 @@ export async function runClaudePrompt(
       fullPrompt,
       options,
       { execContext, description, progress, auditLogger, logger },
-      timer
+      timer,
+      agentName,
+      turnBuffer
     );
 
     turnCount = messageLoopResult.turnCount;
@@ -377,7 +381,9 @@ async function processMessageStream(
   fullPrompt: string,
   options: NonNullable<Parameters<typeof query>[0]['options']>,
   deps: MessageLoopDeps,
-  timer: Timer
+  timer: Timer,
+  agentName: string | null = null,
+  turnBuffer?: TurnBuffer
 ): Promise<MessageLoopResult> {
   const { execContext, description, progress, auditLogger, logger } = deps;
   const HEARTBEAT_INTERVAL = 30000;
@@ -400,6 +406,25 @@ async function processMessageStream(
     // Increment turn count for assistant messages
     if (message.type === 'assistant') {
       turnCount++;
+
+      // Push turn summary to heartbeat buffer for live dashboard streaming
+      if (turnBuffer) {
+        const msg = message as { message?: { content?: unknown } };
+        let snippet = '';
+        if (msg.message?.content) {
+          if (Array.isArray(msg.message.content)) {
+            snippet = msg.message.content
+              .filter((c: { type?: string; text?: string }) => c.type === 'text' || c.text)
+              .map((c: { text?: string }) => c.text || '')
+              .join(' ');
+          } else {
+            snippet = String(msg.message.content);
+          }
+        }
+        const label = agentName || description;
+        const truncated = snippet.slice(0, 200).replace(/\n/g, ' ');
+        turnBuffer.push(`Turn ${turnCount} (${label}): ${truncated}`);
+      }
     }
 
     const dispatchResult = await dispatchMessage(

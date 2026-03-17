@@ -44,6 +44,7 @@ import type { AgentEndResult } from '../types/audit.js';
 import type { AgentName } from '../types/agents.js';
 import type { ConfigLoaderService } from './config-loader.js';
 import type { AgentMetrics } from '../types/metrics.js';
+import type { TurnBuffer } from '../temporal/activities.js';
 
 /**
  * Input for agent execution.
@@ -94,7 +95,8 @@ export class AgentExecutionService {
     agentName: AgentName,
     input: AgentExecutionInput,
     auditSession: AuditSession,
-    logger: ActivityLogger
+    logger: ActivityLogger,
+    turnBuffer?: TurnBuffer
   ): Promise<Result<AgentEndResult, PentestError>> {
     const { webUrl, repoPath, configPath, pipelineTestingMode = false, attemptNumber } = input;
 
@@ -157,7 +159,8 @@ export class AgentExecutionService {
       agentName,
       auditSession,
       logger,
-      AGENTS[agentName].modelTier
+      AGENTS[agentName].modelTier,
+      turnBuffer
     );
 
     // 6. Spending cap check - defense-in-depth
@@ -269,9 +272,10 @@ export class AgentExecutionService {
     agentName: AgentName,
     input: AgentExecutionInput,
     auditSession: AuditSession,
-    logger: ActivityLogger
+    logger: ActivityLogger,
+    turnBuffer?: TurnBuffer
   ): Promise<AgentEndResult> {
-    const result = await this.execute(agentName, input, auditSession, logger);
+    const result = await this.execute(agentName, input, auditSession, logger, turnBuffer);
     if (isErr(result)) {
       throw result.error;
     }
