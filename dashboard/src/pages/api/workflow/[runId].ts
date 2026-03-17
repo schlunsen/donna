@@ -86,6 +86,41 @@ export const GET: APIRoute = async ({ params, url }) => {
       } catch {
         // Query may not be available
       }
+
+      // Fetch heartbeat details from pending activities for live turn data
+      try {
+        const fullDesc = await handle.describe();
+        // The Temporal SDK WorkflowExecutionDescription has a `raw` property
+        // containing the full gRPC DescribeWorkflowExecutionResponse,
+        // which includes pendingActivities with heartbeatDetails.
+        const raw = (fullDesc as unknown as { raw?: { pendingActivities?: Array<{ heartbeatDetails?: { payloads?: Array<{ data?: Uint8Array | Buffer }> } }> } }).raw;
+        const pendingActivities = raw?.pendingActivities;
+        if (Array.isArray(pendingActivities) && pendingActivities.length > 0) {
+          const heartbeats: Array<Record<string, unknown>> = [];
+          for (const pa of pendingActivities) {
+            if (pa.heartbeatDetails) {
+              const payloads = pa.heartbeatDetails?.payloads;
+              if (Array.isArray(payloads) && payloads.length > 0) {
+                for (const payload of payloads) {
+                  if (payload.data) {
+                    try {
+                      const decoded = Buffer.from(payload.data).toString('utf-8');
+                      heartbeats.push(JSON.parse(decoded));
+                    } catch {
+                      // skip malformed payloads
+                    }
+                  }
+                }
+              }
+            }
+          }
+          if (heartbeats.length > 0) {
+            detail.heartbeats = heartbeats;
+          }
+        }
+      } catch {
+        // Heartbeat data is best-effort
+      }
     }
 
     // Fetch history events (last 50)

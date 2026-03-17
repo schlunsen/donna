@@ -349,6 +349,11 @@ const agents = progress?.agentMetrics
                                     Progress <span class="wf-tab-badge">{agents.length}</span>
                                 </button>
                             )}
+                            {wf.status === 'running' && (
+                                <button class="wf-tab" data-tab="live-logs">
+                                    Live Logs <span class="wf-tab-badge live-badge">LIVE</span>
+                                </button>
+                            )}
                             {wf.pendingActivities > 0 && (
                                 <button class="wf-tab" data-tab="pending">
                                     Pending Activities <span class="wf-tab-badge">{wf.pendingActivities}</span>
@@ -618,6 +623,32 @@ const agents = progress?.agentMetrics
                             </div>
                         )}
 
+                        {/* ── Tab: Live Logs ────────────────────────── */}
+                        {wf.status === 'running' && (
+                            <div class="wf-tab-content" id="tab-live-logs">
+                                <div class="live-logs-header">
+                                    <div class="live-logs-status">
+                                        <span class="live-dot pulse"></span>
+                                        <span class="live-label">Streaming agent turns</span>
+                                        <span class="live-agent" id="liveAgent">—</span>
+                                    </div>
+                                    <div class="live-logs-controls">
+                                        <span class="live-elapsed" id="liveElapsed">—</span>
+                                        <label class="auto-scroll-toggle">
+                                            <input type="checkbox" id="autoScrollToggle" checked />
+                                            <span class="toggle-slider"></span>
+                                            <span class="toggle-label">Auto-scroll</span>
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="live-logs-viewer" id="liveLogsViewer">
+                                    <div class="live-logs-empty" id="liveLogsEmpty">
+                                        Waiting for agent turn data...
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
                         {/* ── Tab: Input / Result ─────────────────────── */}
                         <div class="wf-tab-content" id="tab-input">
                             <div class="json-section">
@@ -881,6 +912,159 @@ const agents = progress?.agentMetrics
                 }
             });
         }
+
+        // ── Live Logs Polling ──────────────────────
+        (function initLiveLogs() {
+            const viewer = document.getElementById('liveLogsViewer');
+            const emptyMsg = document.getElementById('liveLogsEmpty');
+            const agentLabel = document.getElementById('liveAgent');
+            const elapsedLabel = document.getElementById('liveElapsed');
+            const autoScrollToggle = document.getElementById('autoScrollToggle');
+
+            if (!viewer) return; // Not a running workflow
+
+            const POLL_INTERVAL = 3000;
+            let pollTimer = null;
+            let seenLines = new Set();
+            let isPolling = false;
+
+            function formatElapsed(seconds) {
+                const m = Math.floor(seconds / 60);
+                const s = seconds % 60;
+                if (m > 0) return m + 'm ' + s + 's';
+                return s + 's';
+            }
+
+            function appendLine(text) {
+                if (seenLines.has(text)) return;
+                seenLines.add(text);
+
+                if (emptyMsg && emptyMsg.parentNode) {
+                    emptyMsg.remove();
+                }
+
+                const line = document.createElement('div');
+                line.className = 'live-log-line';
+
+                // Color code based on content
+                if (text.includes('Turn ')) {
+                    line.classList.add('turn-line');
+                }
+
+                // Extract turn number for styling
+                const turnMatch = text.match(/^Turn (\d+)/);
+                if (turnMatch) {
+                    const num = document.createElement('span');
+                    num.className = 'turn-number';
+                    num.textContent = 'T' + turnMatch[1];
+                    line.appendChild(num);
+
+                    const rest = text.slice(text.indexOf('):') + 2).trim() || text.slice(turnMatch[0].length);
+                    const agentMatch = text.match(/\(([^)]+)\)/);
+
+                    if (agentMatch) {
+                        const agentSpan = document.createElement('span');
+                        agentSpan.className = 'turn-agent';
+                        agentSpan.textContent = agentMatch[1];
+                        line.appendChild(agentSpan);
+                    }
+
+                    const content = document.createElement('span');
+                    content.className = 'turn-content';
+                    content.textContent = rest;
+                    line.appendChild(content);
+                } else {
+                    line.textContent = text;
+                }
+
+                viewer.appendChild(line);
+
+                // Auto-scroll
+                if (autoScrollToggle && autoScrollToggle.checked) {
+                    viewer.scrollTop = viewer.scrollHeight;
+                }
+            }
+
+            async function poll() {
+                if (isPolling) return;
+                isPolling = true;
+
+                try {
+                    const runId = window.location.pathname.split('/').pop();
+                    const res = await fetch('/api/workflow/' + runId);
+                    if (!res.ok) return;
+
+                    const data = await res.json();
+
+                    // Check if workflow is still running
+                    if (data.status !== 'running') {
+                        stopPolling();
+                        const done = document.createElement('div');
+                        done.className = 'live-log-line live-log-done';
+                        done.textContent = '--- Workflow ' + data.status + ' ---';
+                        viewer.appendChild(done);
+                        // Hide the live dot
+                        const dot = document.querySelector('.live-dot');
+                        if (dot) dot.classList.remove('pulse');
+                        return;
+                    }
+
+                    // Update agent and elapsed from heartbeats
+                    if (data.heartbeats && data.heartbeats.length > 0) {
+                        for (const hb of data.heartbeats) {
+                            if (hb.agent && agentLabel) {
+                                agentLabel.textContent = hb.agent;
+                            }
+                            if (hb.elapsedSeconds && elapsedLabel) {
+                                elapsedLabel.textContent = formatElapsed(hb.elapsedSeconds);
+                            }
+                            // Append turn lines
+                            if (Array.isArray(hb.recentTurns)) {
+                                for (const turn of hb.recentTurns) {
+                                    appendLine(turn);
+                                }
+                            }
+                        }
+                    }
+
+                    // Also extract info from progress query
+                    if (data.progress) {
+                        if (data.progress.currentAgent && agentLabel) {
+                            agentLabel.textContent = data.progress.currentAgent;
+                        }
+                    }
+                } catch (e) {
+                    // Silently ignore poll errors
+                } finally {
+                    isPolling = false;
+                }
+            }
+
+            function startPolling() {
+                if (pollTimer) return;
+                poll(); // Initial fetch
+                pollTimer = setInterval(poll, POLL_INTERVAL);
+            }
+
+            function stopPolling() {
+                if (pollTimer) {
+                    clearInterval(pollTimer);
+                    pollTimer = null;
+                }
+            }
+
+            // Start polling when tab is visible
+            startPolling();
+
+            // Pause when page is hidden
+            document.addEventListener('visibilitychange', function() {
+                if (document.hidden) {
+                    stopPolling();
+                } else {
+                    startPolling();
+                }
+            });
+        })();
 
         // ── Query runner ──────────────────────────
         document.getElementById('runQueryBtn')?.addEventListener('click', async () => {
@@ -1519,6 +1703,166 @@ const agents = progress?.agentMetrics
         background: var(--error-bg);
         border-bottom: 1px solid var(--error-border);
         color: var(--error);
+    }
+
+    /* ── Live Logs ────────────────────────── */
+    .live-badge {
+        background: rgba(52, 211, 153, 0.15) !important;
+        color: #34d399 !important;
+        animation: badge-pulse 2s ease-in-out infinite;
+    }
+
+    @keyframes badge-pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.5; }
+    }
+
+    .live-logs-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 0.75rem;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+
+    .live-logs-status {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 0.82rem;
+    }
+
+    .live-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #34d399;
+        flex-shrink: 0;
+    }
+
+    .live-dot.pulse {
+        animation: dot-pulse 1.5s ease-in-out infinite;
+    }
+
+    @keyframes dot-pulse {
+        0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.4); }
+        50% { opacity: 0.6; box-shadow: 0 0 0 4px rgba(52, 211, 153, 0); }
+    }
+
+    .live-label {
+        color: var(--text-muted);
+        font-size: 0.78rem;
+    }
+
+    .live-agent {
+        font-weight: 600;
+        color: #67e8f9;
+        font-family: var(--font-mono);
+        font-size: 0.78rem;
+    }
+
+    .live-logs-controls {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+    }
+
+    .live-elapsed {
+        font-family: var(--font-mono);
+        font-size: 0.75rem;
+        color: var(--text-faint);
+    }
+
+    .auto-scroll-toggle {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        cursor: pointer;
+        font-size: 0.78rem;
+        color: var(--text-dim);
+    }
+
+    .auto-scroll-toggle input {
+        display: none;
+    }
+
+    .live-logs-viewer {
+        background: #0a0e14;
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 1rem;
+        height: 500px;
+        overflow-y: auto;
+        font-family: var(--font-mono);
+        font-size: 0.78rem;
+        line-height: 1.7;
+    }
+
+    .live-logs-viewer::-webkit-scrollbar {
+        width: 6px;
+    }
+
+    .live-logs-viewer::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+    .live-logs-viewer::-webkit-scrollbar-thumb {
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 3px;
+    }
+
+    .live-logs-viewer::-webkit-scrollbar-thumb:hover {
+        background: rgba(255, 255, 255, 0.2);
+    }
+
+    .live-logs-empty {
+        color: var(--text-faint);
+        font-style: italic;
+        text-align: center;
+        padding: 3rem 0;
+    }
+
+    .live-log-line {
+        padding: 2px 0;
+        display: flex;
+        align-items: baseline;
+        gap: 0.5rem;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+    }
+
+    .live-log-line.turn-line {
+        color: #d1d5db;
+    }
+
+    .turn-number {
+        color: #34d399;
+        font-weight: 700;
+        min-width: 42px;
+        flex-shrink: 0;
+    }
+
+    .turn-agent {
+        color: #67e8f9;
+        font-weight: 600;
+        min-width: 100px;
+        flex-shrink: 0;
+    }
+
+    .turn-content {
+        color: #d1d5db;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .live-log-done {
+        color: var(--text-faint);
+        text-align: center;
+        padding: 0.75rem 0;
+        border-top: 1px solid var(--border);
+        margin-top: 0.5rem;
+        font-style: italic;
     }
 
     @media (max-width: 900px) {
