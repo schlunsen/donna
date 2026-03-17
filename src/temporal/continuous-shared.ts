@@ -164,3 +164,47 @@ export interface ContinuousProgress extends ContinuousState {
 // ── Queries ─────────────────────────────────────────────────────
 
 export const getContinuousProgress = defineQuery<ContinuousProgress>('getContinuousProgress');
+
+// ── Notification Formatting ─────────────────────────────────────
+
+/**
+ * Format a human-readable notification summary from a DeltaReport.
+ * Pure function — safe for workflow context (no crypto/fs/path).
+ */
+export function formatNotificationSummary(
+  delta: DeltaReport,
+  webUrl: string,
+  gitCommit: string,
+  scanType: 'full' | 'incremental'
+): string {
+  const lines: string[] = [];
+
+  lines.push(`🛡️ Donna Sentinel — ${scanType} scan`);
+  lines.push(`Target: ${webUrl}`);
+  lines.push(`Commit: ${gitCommit.slice(0, 8)}`);
+  lines.push('');
+
+  if (delta.newFindings.length > 0) {
+    lines.push(`🚨 ${delta.newFindings.length} NEW finding(s):`);
+    for (const f of delta.newFindings.slice(0, 5)) {
+      lines.push(`  • [${f.severity.toUpperCase()}] ${f.title}`);
+    }
+    if (delta.newFindings.length > 5) {
+      lines.push(`  ... and ${delta.newFindings.length - 5} more`);
+    }
+    lines.push('');
+  }
+
+  if (delta.resolvedFindings.length > 0) {
+    lines.push(`✅ ${delta.resolvedFindings.length} RESOLVED finding(s)`);
+  }
+
+  if (delta.confirmedFindings.length > 0) {
+    lines.push(`⚠️  ${delta.confirmedFindings.length} still present`);
+  }
+
+  lines.push('');
+  lines.push(`Total active: ${delta.totalActive}`);
+
+  return lines.join('\n');
+}

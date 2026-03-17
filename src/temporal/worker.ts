@@ -41,6 +41,7 @@ async function runWorker(): Promise<void> {
   console.log('Bundling workflows...');
   const workflowBundle = await bundleWorkflowCode({
     workflowsPath: path.join(__dirname, 'workflows.js'),
+    ignoreModules: ['crypto', 'fs/promises', 'path'],
   });
 
   const worker = await Worker.create({

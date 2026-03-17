@@ -37,13 +37,13 @@ import {
 import type * as continuousActivities from './continuous-activities.js';
 import {
   getContinuousProgress,
+  formatNotificationSummary,
   type ContinuousInput,
   type ContinuousState,
   type ContinuousProgress,
   type NotificationPayload,
 } from './continuous-shared.js';
 import type { PipelineInput, PipelineState } from './shared.js';
-import { formatNotificationSummary } from '../services/finding-tracker.js';
 
 // ── Activity Proxies ────────────────────────────────────────────
 
