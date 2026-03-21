@@ -64,6 +64,9 @@ export interface ConcurrencyConfig {
   max_browsers?: number;
 }
 
+/** Per-agent model tier overrides. Keys are AgentName values. */
+export type ModelTierOverrides = Record<string, 'small' | 'medium' | 'large'>;
+
 export interface PipelineConfig {
   retry_preset?: RetryPreset;
   max_concurrent_pipelines?: number;
@@ -71,6 +74,8 @@ export interface PipelineConfig {
   feedback_iterations?: number;
   /** Fine-grained concurrency limits per resource type */
   concurrency?: ConcurrencyConfig;
+  /** Override default model tiers for specific agents */
+  model_tiers?: ModelTierOverrides;
 }
 
 // ── Continuous Scanning Config ──────────────────────────────────

@@ -94,3 +94,122 @@ export interface VulnerabilityQueue {
 export interface VulnerabilityItem {
   [key: string]: unknown;
 }
+
+// ── Typed Queue Schemas (Issue #3) ──────────────────────────────
+
+/**
+ * Base fields required for ALL queue entries regardless of vulnerability type.
+ * Provides consistent structure for exploitation agents.
+ */
+export interface BaseQueueEntry {
+  /** Unique ID within the queue (e.g., "SQLI-001", "XSS-003") */
+  id: string;
+  /** Vulnerability class */
+  vulnerability_type: string;
+  /** Target endpoint URL or path */
+  endpoint: string;
+  /** HTTP method */
+  method: string;
+  /** Confidence level */
+  confidence: 'high' | 'medium' | 'low';
+  /** Source file where the vulnerability was found */
+  source_file: string;
+  /** Whether the vulnerability is externally exploitable */
+  externally_exploitable: boolean;
+  /** Optional prerequisite finding IDs for vulnerability chaining */
+  prerequisite_findings?: string[];
+  /** Optional chain description explaining the dependency */
+  chain_description?: string;
+  /** Optional severity multiplier when chained (default: 1.0) */
+  chain_severity_multiplier?: number;
+}
+
+/**
+ * Injection-specific queue entry (SQLi, CMDi, SSTI, XXE)
+ */
+export interface InjectionQueueEntry extends BaseQueueEntry {
+  injection_type: 'sqli' | 'cmdi' | 'ssti' | 'xxe' | 'path_traversal' | 'deserialization';
+  /** Sink function where injection occurs */
+  sink_function: string;
+  /** Vulnerable parameter name */
+  vulnerable_parameter: string;
+  /** Whether sanitization is present */
+  sanitization_present: boolean;
+  /** Bypass technique if sanitization exists */
+  sanitization_bypass: string | null;
+}
+
+/**
+ * XSS-specific queue entry
+ */
+export interface XssQueueEntry extends BaseQueueEntry {
+  xss_type: 'reflected' | 'stored' | 'dom';
+  /** Where the payload renders */
+  output_context: 'html_body' | 'html_attribute' | 'javascript' | 'url' | 'css';
+  /** Source input parameter */
+  source: string;
+  /** Additional source detail */
+  source_detail?: string;
+}
+
+/**
+ * Auth-specific queue entry
+ */
+export interface AuthQueueEntry extends BaseQueueEntry {
+  auth_weakness: string;
+  /** Endpoint requiring authentication */
+  source_endpoint: string;
+}
+
+/**
+ * SSRF-specific queue entry
+ */
+export interface SsrfQueueEntry extends BaseQueueEntry {
+  /** Vulnerable parameter accepting URLs */
+  vulnerable_parameter: string;
+  /** Endpoint accepting the URL */
+  source_endpoint: string;
+  /** URL schemes that may be accepted */
+  url_schemes?: string[];
+}
+
+/**
+ * Authz-specific queue entry
+ */
+export interface AuthzQueueEntry extends BaseQueueEntry {
+  authz_weakness: string;
+  /** Resource or endpoint with broken access control */
+  target_resource: string;
+  /** Required privilege level to access */
+  required_privilege: string;
+}
+
+/**
+ * Payload execution scope for exploitation context.
+ */
+export interface PayloadExecutionScope {
+  /** Required encoding (e.g., "double-url-encode", "base64") */
+  encoding_required?: string[];
+  /** Ordered request sequence for multi-step exploitation */
+  request_sequence?: string[];
+  /** Required HTTP headers */
+  required_headers?: Record<string, string>;
+  /** Authentication context needed */
+  authentication_context?: string;
+}
+
+/**
+ * Required fields for BaseQueueEntry validation.
+ * Used by queue-validator.ts for save-time field checks.
+ */
+export const BASE_QUEUE_REQUIRED_FIELDS = [
+  'id',
+  'vulnerability_type',
+  'endpoint',
+  'method',
+  'confidence',
+  'source_file',
+  'externally_exploitable',
+] as const;
+
+export const VALID_CONFIDENCE_VALUES = ['high', 'medium', 'low'] as const;

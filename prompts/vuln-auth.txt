@@ -165,14 +165,24 @@ From `deliverables/pre_recon_deliverable.md`, use Section 3 and 6 to help guide 
 - For logout, verify server-side invalidation and client cookie clearing.
 **If failed → classify:** `reset_recovery_flaw` → **suggested attack:** reset_token_guessing / takeover.
 
-## 9) SSO/OAuth (if applicable)
+## 9) SSO/OAuth/OIDC (if applicable)
 - For all OAuth/OIDC flows, validate `state` (CSRF) and `nonce` (replay).
 - Enforce exact redirect URI allowlists (no wildcards).
 - For IdP tokens, verify signature and pin accepted algorithms; validate at least `iss`, `aud`, `exp`.
 - For public clients, require PKCE.
 - Map external identity to local account deterministically (no silent account creation without a verified link).
 - nOAuth check: Verify user identification uses the immutable `sub` (subject) claim, NOT deterministic/mutable attributes like `email`, `preferred_username`, `name`, or other user-controllable claims. Using mutable attributes allows attackers to create their own OAuth tenant, set matching attributes, and impersonate users.
-**If failed → classify:** `login_flow_logic` or `token_management_issue` → **suggested attack:** oauth_code_interception / token_replay / noauth_attribute_hijack.
+
+### OAuth/OIDC Edge Cases (MUST CHECK):
+- **PKCE Downgrade:** Verify the server REQUIRES PKCE (`code_challenge`) and rejects authorization requests without it. Check if `code_challenge_method` can be omitted to bypass verification.
+- **Hybrid Flow Token Leakage:** If using `response_type=code+token` or `code+id_token`, verify tokens are not exposed in URL fragments or referrer headers.
+- **Cross-Tenant Token Confusion:** In multi-tenant apps, verify tokens from tenant A cannot be used to access tenant B. Check `aud` (audience) and `iss` (issuer) validation is per-tenant, not global.
+- **State Parameter Entropy:** Verify `state` is generated with CSPRNG and has sufficient entropy (>= 128 bits). Check for state fixation (attacker pre-setting state).
+- **Redirect URI Validation Bypass:** Test for open redirect chains: `redirect_uri=https://legit.com@evil.com`, path traversal `redirect_uri=https://legit.com/../evil`, subdomain wildcards `redirect_uri=https://evil.legit.com`.
+- **JWT Algorithm Confusion (RS256 → HS256):** If JWT uses RS256, check if the server accepts HS256 with the RSA public key as the HMAC secret. Verify `alg` header is validated against expected algorithm, not trusted from the token.
+- **Token Binding:** Verify access tokens are bound to the session/client that requested them. Check for token replay across different clients.
+
+**If failed → classify:** `login_flow_logic` or `token_management_issue` or `oauth_flow_issue` → **suggested attack:** oauth_code_interception / token_replay / noauth_attribute_hijack / pkce_downgrade / algorithm_confusion / redirect_uri_bypass.
 
 # Confidence scoring (analysis phase; applies to all checks above)
 - **High** — The flaw is directly established and deterministic in the target context. You have direct evidence or equivalent (code/config that creates the condition, or a single safe interaction that shows it) with no material alternate control. Scope is clear (which endpoints/flows).

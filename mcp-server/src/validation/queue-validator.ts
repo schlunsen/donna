@@ -12,16 +12,24 @@
  */
 
 import type { VulnerabilityQueue } from '../types/deliverables.js';
+import { BASE_QUEUE_REQUIRED_FIELDS, VALID_CONFIDENCE_VALUES } from '../types/deliverables.js';
 
 export interface ValidationResult {
   valid: boolean;
-  message?: string;
-  data?: VulnerabilityQueue;
+  message?: string | undefined;
+  warnings?: string[] | undefined;
+  data?: VulnerabilityQueue | undefined;
 }
 
 /**
- * Validate JSON structure for queue files
- * Queue files must have a 'vulnerabilities' array
+ * Validate JSON structure for queue files.
+ *
+ * Two-level validation:
+ * 1. Structure: must have `{"vulnerabilities": [...]}` (hard fail)
+ * 2. Fields: each item should have base required fields (warnings, not failures)
+ *
+ * Field validation is lenient (warnings) to maintain backward compatibility
+ * while guiding agents toward the standardized schema.
  */
 export function validateQueueJson(content: string): ValidationResult {
   try {
@@ -52,8 +60,52 @@ export function validateQueueJson(content: string): ValidationResult {
       };
     }
 
+    // Field-level validation (warnings, not failures — backward compatible)
+    const warnings: string[] = [];
+    const seenIds = new Set<string>();
+
+    for (let i = 0; i < obj.vulnerabilities.length; i++) {
+      const item = obj.vulnerabilities[i] as Record<string, unknown>;
+      if (typeof item !== 'object' || item === null) {
+        warnings.push(`vulnerabilities[${i}]: Expected an object, got ${typeof item}`);
+        continue;
+      }
+
+      // Check required base fields
+      for (const field of BASE_QUEUE_REQUIRED_FIELDS) {
+        if (!(field in item)) {
+          warnings.push(`vulnerabilities[${i}]: Missing recommended field '${field}'`);
+        }
+      }
+
+      // Validate confidence values
+      if ('confidence' in item && typeof item.confidence === 'string') {
+        if (!(VALID_CONFIDENCE_VALUES as readonly string[]).includes(item.confidence)) {
+          warnings.push(
+            `vulnerabilities[${i}]: Invalid confidence '${item.confidence}', expected: ${VALID_CONFIDENCE_VALUES.join(', ')}`
+          );
+        }
+      }
+
+      // Check for duplicate IDs
+      if ('id' in item && typeof item.id === 'string') {
+        if (seenIds.has(item.id)) {
+          warnings.push(`vulnerabilities[${i}]: Duplicate ID '${item.id}'`);
+        }
+        seenIds.add(item.id);
+      }
+
+      // Validate prerequisite_findings references (if present)
+      if ('prerequisite_findings' in item) {
+        if (!Array.isArray(item.prerequisite_findings)) {
+          warnings.push(`vulnerabilities[${i}]: 'prerequisite_findings' must be an array`);
+        }
+      }
+    }
+
     return {
       valid: true,
+      warnings: warnings.length > 0 ? warnings : undefined,
       data: parsed as VulnerabilityQueue,
     };
   } catch (error) {

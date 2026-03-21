@@ -101,7 +101,7 @@ An **exploitable vulnerability** is a confirmed source-to-sink path where the en
   **Structure:** The `vulnerability` JSON object MUST follow this exact format:
 		{
 			"ID": "unique ID for each vulnerability (e.g., INJ-VULN-XX)",
-			"vulnerability_type": "SQLi | CommandInjection | LFI | RFI | SSTI | PathTraversal | InsecureDeserialization",
+			"vulnerability_type": "SQLi | CommandInjection | LFI | RFI | SSTI | PathTraversal | InsecureDeserialization | XXE",
 			"externally_exploitable": true | false,
 			"source": "param name & file:line.",
 			"combined_sources": "list if multiple sources were merged (with order).",
@@ -112,7 +112,7 @@ An **exploitable vulnerability** is a confirmed source-to-sink path where the en
 			"concat_occurrences": "each concat/format/join with file:line; flag those after sanitization.",
 			"verdict": "safe | vulnerable.",
 			"mismatch_reason": "if vulnerable, 1–2 lines in plain language.",
-			"witness_payload": "minimal input you'd use later to show structure influence (e.g., ' for SQLi, ; ls -la for Command Injection, ../../../../etc/passwd for LFI, {{7*7}} for SSTI).",
+			"witness_payload": "minimal input you'd use later to show structure influence (e.g., ' for SQLi, ; ls -la for Command Injection, ../../../../etc/passwd for LFI, {{7*7}} for SSTI, <!DOCTYPE foo [<!ENTITY xxe SYSTEM 'file:///etc/passwd'>]><foo>&xxe;</foo> for XXE).",
 			"confidence": "high | med | low.",
 			"notes": "assumptions, untraversed branches, anything unusual."
 		}
@@ -137,14 +137,15 @@ An **exploitable vulnerability** is a confirmed source-to-sink path where the en
 		      - **B. The ordered list of sanitizers on that path:** Record every sanitization function encountered *on this specific path*, including its name, file:line, and type (e.g., parameter binding, type casting).
 		      - **C. All concatenations on that path:** Note every string concatenation or format operation involving the tainted data. Crucially, flag any concatenation that occurs *after* a sanitization step on this path.
   - **3) Detect sinks and label slot types**
-		- **SQLi:** DB calls, raw SQL, string-built queries | **Command:** `exec`, `system`, `subprocess`, shell invocations | **File:** `include`, `require`, `fopen`, `readFile` | **SSTI:** template `render`/`compile` with user content | **Deserialize:** `pickle.loads`, `unserialize`, `readObject`, `yaml.load`
-		- **Slot labels:** SQL-val/like/num/enum/ident | CMD-argument/part-of-string | FILE-path/include | TEMPLATE-expression | DESERIALIZE-object | PATH-component
+		- **SQLi:** DB calls, raw SQL, string-built queries | **Command:** `exec`, `system`, `subprocess`, shell invocations | **File:** `include`, `require`, `fopen`, `readFile` | **SSTI:** template `render`/`compile` with user content | **Deserialize:** `pickle.loads`, `unserialize`, `readObject`, `yaml.load` | **XXE:** `DocumentBuilder`, `SAXParser`, `XMLReader`, `lxml.etree`, `xml2js`, `XmlDocument`, `DOMParser` with external entity resolution enabled
+		- **Slot labels:** SQL-val/like/num/enum/ident | CMD-argument/part-of-string | FILE-path/include | TEMPLATE-expression | DESERIALIZE-object | PATH-component | XML-entity
 - **4) Match sanitization to sink context**
 		- **SQL:** Binds for val/like/num; whitelist for enum/ident. Mismatch: concat, regex, wrong slot defense
 		- **Command:** Array args (`shell=False`) OR `shlex.quote()`. Mismatch: concat, blacklist, `shell=True`
 		- **File/Path:** Whitelist paths OR `resolve()` + boundary check. Mismatch: concat, `../` blacklist, no protocol check
 		- **SSTI:** Sandboxed context + autoescape; no user input in expressions. Mismatch: concat, weak sandbox
 		- **Deserialize:** Trusted sources only; safe formats + HMAC. Mismatch: untrusted input, pickle/unserialize
+		- **XXE:** External entity resolution disabled (`FEATURE_EXTERNAL_ENTITIES = false`, `disallow-doctype-decl`). Mismatch: default parser settings, DTD processing enabled, `FEATURE_EXTERNAL_GENERAL_ENTITIES` not disabled. Check: `DocumentBuilderFactory.setFeature()`, `lxml.etree.parse()` with `resolve_entities=True`, `xml2js` defaults
   - **5) Make the call (vulnerability or safe)**
     - **Vulnerable** if any tainted input reaches a slot with no defense or the wrong one.
     - Include a short rationale (e.g., "context mismatch: regex escape on ORDER BY keyword slot").

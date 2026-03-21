@@ -51,3 +51,12 @@ rules:
 #   concurrency:                        # Fine-grained concurrency limits
 #     pipelines: 3                      # Max concurrent vuln→exploit pipeline pairs (default: 5)
 #     max_browsers: 2                   # Max concurrent Playwright browser instances (default: 3)
+#   model_tiers:                        # Override default model tiers per agent
+#     pre-recon: large                  # Default: large (Opus — deep code analysis)
+#     recon: medium                     # Default: medium (Sonnet — general analysis)
+#     injection-vuln: medium            # Default: medium
+#     injection-exploit: large          # Default: large (Opus — complex exploitation)
+#     xss-exploit: medium               # Default: medium
+#     auth-exploit: large               # Default: large
+#     ssrf-exploit: large               # Default: large
+#     report: small                     # Default: small (Haiku — summarization)

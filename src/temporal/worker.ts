@@ -26,6 +26,7 @@ import path from 'node:path';
 import dotenv from 'dotenv';
 import * as activities from './activities.js';
 import * as continuousActivities from './continuous-activities.js';
+import { getBrowserPool } from '../services/browser-pool.js';
 
 dotenv.config();
 
@@ -53,9 +54,13 @@ async function runWorker(): Promise<void> {
     maxConcurrentActivityTaskExecutions: 25, // Support multiple parallel workflows (5 agents × ~5 workflows)
   });
 
+  // Initialize browser pool with cleanup handlers (registers SIGINT/SIGTERM cleanup)
+  const browserPool = getBrowserPool();
+
   // Graceful shutdown handling
   const shutdown = async (): Promise<void> => {
     console.log('\nShutting down worker...');
+    browserPool.cleanup();
     worker.shutdown();
   };
 

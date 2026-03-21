@@ -135,7 +135,17 @@ From `deliverables/pre_recon_deliverable.md`, use Section 10 (SSRF Sinks) to gui
 - For all URL parameters, verify that requests to internal/private IP ranges are blocked (127.0.0.0/8, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16).
 - Check for hostname allowlisting vs blocklisting (blocklists are insufficient).
 - Verify protection against DNS rebinding attacks and localhost access.
-**If failed → classify:** `service_discovery` → **suggested attack:** internal_service_access / cloud_metadata_retrieval.
+
+### DNS Rebinding Detection (MUST CHECK):
+- **Technique:** Attacker controls DNS records for their domain. First DNS lookup returns an allowlisted IP (passes validation). Second lookup (when the actual HTTP request is made) returns an internal IP (127.0.0.1, 169.254.169.254, etc.).
+- **TOCTOU Pattern:** Look for code that resolves DNS separately from the actual request. If the app calls `dns.resolve()` or `getaddrinfo()` to check the IP, then makes a separate HTTP request, DNS rebinding can bypass the check.
+- **Detection in code:** Search for patterns where hostname is resolved to IP for validation, but the original hostname (not the resolved IP) is used for the actual request. Safe pattern: resolve once, use the resolved IP for both check and request.
+- **Common vulnerable patterns:**
+  - `const ip = await dns.resolve(url.hostname); if (isPrivate(ip)) throw; await fetch(url)` — vulnerable (two resolutions)
+  - `const ip = await dns.resolve(url.hostname); await fetch('http://' + ip + url.path)` — safe (uses resolved IP)
+- **Short TTL check:** Look for DNS caching configuration. If the app doesn't cache DNS responses (or uses very short TTL), it's more susceptible.
+
+**If failed → classify:** `service_discovery` → **suggested attack:** internal_service_access / cloud_metadata_retrieval / dns_rebinding.
 
 ## 4) Port Restriction and Service Access Controls  
 - Verify that only approved ports are accessible (typically 80, 443, sometimes 8080, 8443).

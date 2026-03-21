@@ -45,6 +45,8 @@ import type { AgentName } from '../types/agents.js';
 import type { ConfigLoaderService } from './config-loader.js';
 import type { AgentMetrics } from '../types/metrics.js';
 import type { TurnBuffer } from '../temporal/activities.js';
+import type { ModelTier } from '../ai/models.js';
+import { BudgetMonitor } from './budget-monitor.js';
 
 /**
  * Input for agent execution.
@@ -147,10 +149,23 @@ export class AgentExecutionService {
       );
     }
 
-    // 4. Start audit logging
+    // 4. Resolve model tier: config override > agent definition > default 'medium'
+    const configModelTiers = distributedConfig
+      ? (distributedConfig as unknown as { modelTiers?: Record<string, string> }).modelTiers
+      : undefined;
+    const resolvedTier: ModelTier = (
+      configModelTiers?.[agentName] ??
+      AGENTS[agentName].modelTier ??
+      'medium'
+    ) as ModelTier;
+
+    // 5. Create budget monitor for real-time cost tracking
+    const budgetMonitor = BudgetMonitor.forTier(agentName, resolvedTier, logger);
+
+    // 6. Start audit logging
     await auditSession.startAgent(agentName, prompt, attemptNumber);
 
-    // 5. Execute agent
+    // 7. Execute agent
     const result: ClaudePromptResult = await runClaudePrompt(
       prompt,
       repoPath,
@@ -159,9 +174,15 @@ export class AgentExecutionService {
       agentName,
       auditSession,
       logger,
-      AGENTS[agentName].modelTier,
+      resolvedTier,
       turnBuffer
     );
+
+    // 7b. Update budget monitor with final cost
+    const budgetStatus = budgetMonitor.update(result.cost || 0, result.turns ?? 0);
+    if (budgetStatus.criticalReached) {
+      logger.warn(`Agent ${agentName} exceeded budget: ${budgetMonitor.getSummary().utilizationPct}% utilized`);
+    }
 
     // 6. Spending cap check - defense-in-depth
     if (result.success && (result.turns ?? 0) <= 2 && (result.cost || 0) === 0) {

@@ -92,6 +92,18 @@
           "pattern": "^[1-9][0-9]?$",
           "description": "Max concurrent vulnerability pipelines (1-99, default: 5)"
         },
+        "model_tiers": {
+          "type": "object",
+          "description": "Override default model tiers for specific agents. Keys are agent names, values are tier levels.",
+          "patternProperties": {
+            "^(pre-recon|recon|injection-vuln|xss-vuln|auth-vuln|ssrf-vuln|authz-vuln|injection-exploit|xss-exploit|auth-exploit|ssrf-exploit|authz-exploit|report)$": {
+              "type": "string",
+              "enum": ["small", "medium", "large"],
+              "description": "Model tier: small (Haiku), medium (Sonnet), large (Opus)"
+            }
+          },
+          "additionalProperties": false
+        },
         "concurrency": {
           "type": "object",
           "description": "Fine-grained concurrency limits per resource type",

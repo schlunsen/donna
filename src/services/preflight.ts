@@ -26,6 +26,7 @@ import { type Result, ok, err } from '../types/result.js';
 import { parseConfig } from '../config-parser.js';
 import { resolveModel } from '../ai/models.js';
 import type { ActivityLogger } from '../types/activity-logger.js';
+import { validateChromiumAvailability } from './browser-pool.js';
 
 // === Repository Validation ===
 
@@ -307,7 +308,17 @@ export async function runPreflightChecks(
     }
   }
 
-  // 3. Credential check (cheap — 1 SDK round-trip)
+  // 3. Browser/Chromium check (free — filesystem only)
+  const chromiumResult = validateChromiumAvailability();
+  if (!chromiumResult.available) {
+    logger.warn(`Chromium check: ${chromiumResult.message}`);
+    // Non-fatal warning — some agents don't need browsers.
+    // But log it prominently so Docker builds are caught early.
+  } else {
+    logger.info(`Browser check: ${chromiumResult.message}`);
+  }
+
+  // 4. Credential check (cheap — 1 SDK round-trip)
   const credResult = await validateCredentials(logger);
   if (!credResult.ok) {
     return credResult;
