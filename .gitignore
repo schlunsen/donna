@@ -5,3 +5,5 @@ credentials/
 dist/
 repos/
 .worktrees/
+.playwright-mcp/
+deliverables/
