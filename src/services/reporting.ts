@@ -8,7 +8,7 @@ import { fs, path } from 'zx';
 import { PentestError } from './error-handling.js';
 import { ErrorCode } from '../types/errors.js';
 import type { ActivityLogger } from '../types/activity-logger.js';
-import { processAndDeduplicateFindings } from './finding-deduplication.js';
+import { processAndDeduplicateFindings, type FindingSummary } from './finding-deduplication.js';
 
 interface DeliverableFile {
   name: string;
@@ -27,7 +27,7 @@ interface DeliverableFile {
  * 5. Generates a summary table with finding counts by severity
  * 6. Writes both the deduplicated report and the raw concatenated report
  */
-export async function assembleFinalReport(sourceDir: string, logger: ActivityLogger): Promise<string> {
+export async function assembleFinalReport(sourceDir: string, logger: ActivityLogger): Promise<{ content: string; findingSummary: FindingSummary }> {
   const deliverableFiles: DeliverableFile[] = [
     { name: 'Injection', path: 'injection_exploitation_evidence.md', required: false },
     { name: 'XSS', path: 'xss_exploitation_evidence.md', required: false },
@@ -123,7 +123,11 @@ export async function assembleFinalReport(sourceDir: string, logger: ActivityLog
     await fs.writeFile(finalReportPath, finalContent);
     logger.info(`Final report assembled at ${finalReportPath}`);
 
-    return finalContent;
+    const findingSummary: FindingSummary = mergedFindings.length > 0
+      ? summary
+      : { total: 0, critical: 0, high: 0, medium: 0, low: 0, informational: 0, deduplicated: 0 };
+
+    return { content: finalContent, findingSummary };
   } catch (error) {
     const err = error as Error;
     throw new PentestError(

@@ -6,9 +6,20 @@
  */
 
 import { Connection, Client } from '@temporalio/client';
+import { computeFindingSummaryFromFiles } from './audit-logs.js';
 
 // Types mirrored from src/temporal/shared.ts (kept in sync manually —
 // dashboard is a separate package so we don't import from the main project)
+
+export interface FindingSummary {
+  total: number;
+  critical: number;
+  high: number;
+  medium: number;
+  low: number;
+  informational: number;
+  deduplicated: number;
+}
 
 export interface PipelineSummary {
   totalCostUsd: number;
@@ -37,6 +48,7 @@ export interface PipelineProgress {
   startTime: number;
   agentMetrics: Record<string, AgentMetrics>;
   summary: PipelineSummary | null;
+  findingSummary: FindingSummary | null;
   elapsedMs: number;
 }
 
@@ -175,7 +187,8 @@ export async function listWorkflowsWithProgress(options?: {
 }): Promise<WorkflowInfo[]> {
   const workflows = await listWorkflows(options);
 
-  // Enrich running workflows with progress data (in parallel)
+  // Enrich workflows with progress/result data (in parallel)
+  const client = await getTemporalClient();
   const enriched = await Promise.all(
     workflows.map(async (wf) => {
       if (wf.status === 'running') {
@@ -183,6 +196,22 @@ export async function listWorkflowsWithProgress(options?: {
         if (progress) {
           return { ...wf, progress };
         }
+      } else if (wf.status === 'completed') {
+        // Fetch result for completed workflows to get findingSummary
+        try {
+          const handle = client.workflow.getHandle(wf.workflowId);
+          const result = await handle.result() as PipelineProgress;
+          if (result) {
+            // Backfill findingSummary from evidence files if not in workflow result
+            if (!result.findingSummary) {
+              const backfilled = await computeFindingSummaryFromFiles(wf.workflowId);
+              if (backfilled) {
+                result.findingSummary = backfilled;
+              }
+            }
+            return { ...wf, progress: { ...result, workflowId: wf.workflowId, elapsedMs: 0 } };
+          }
+        } catch { /* result unavailable */ }
       }
       return wf;
     })

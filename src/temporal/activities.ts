@@ -362,16 +362,19 @@ export async function runPreflightValidation(input: ActivityInput): Promise<void
 
 /**
  * Assemble the final report by concatenating exploitation evidence files.
+ * Returns the finding summary with severity counts for workflow state.
  */
-export async function assembleReportActivity(input: ActivityInput): Promise<void> {
+export async function assembleReportActivity(input: ActivityInput): Promise<import('./shared.js').FindingSummary | null> {
   const { repoPath } = input;
   const logger = createActivityLogger();
   logger.info('Assembling deliverables from specialist agents...');
   try {
-    await assembleFinalReport(repoPath, logger);
+    const { findingSummary } = await assembleFinalReport(repoPath, logger);
+    return findingSummary;
   } catch (error) {
     const err = error as Error;
     logger.warn(`Error assembling final report: ${err.message}`);
+    return null;
   }
 }
 

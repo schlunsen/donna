@@ -413,16 +413,39 @@ async function processMessageStream(
         let snippet = '';
         if (msg.message?.content) {
           if (Array.isArray(msg.message.content)) {
-            snippet = msg.message.content
-              .filter((c: { type?: string; text?: string }) => c.type === 'text' || c.text)
-              .map((c: { text?: string }) => c.text || '')
-              .join(' ');
+            const parts: string[] = [];
+            for (const block of msg.message.content as Array<{ type?: string; text?: string; name?: string; input?: unknown }>) {
+              if (block.type === 'text' && block.text) {
+                parts.push(block.text);
+              } else if (block.type === 'tool_use' && block.name) {
+                // Summarize tool usage for live visibility
+                const toolName = block.name;
+                let param = '';
+                if (block.input && typeof block.input === 'object') {
+                  const inp = block.input as Record<string, unknown>;
+                  // Extract the most useful parameter for each common tool
+                  if (inp.command) param = String(inp.command).replace(/\n/g, ' ').slice(0, 80);
+                  else if (inp.file_path) param = String(inp.file_path);
+                  else if (inp.pattern) param = String(inp.pattern);
+                  else if (inp.url) param = String(inp.url);
+                  else if (inp.query) param = String(inp.query).slice(0, 80);
+                  else {
+                    // Use first string param
+                    for (const v of Object.values(inp)) {
+                      if (typeof v === 'string' && v.length > 0) { param = v.slice(0, 80); break; }
+                    }
+                  }
+                }
+                parts.push(param ? `🔧 ${toolName}: ${param}` : `🔧 ${toolName}`);
+              }
+            }
+            snippet = parts.join(' | ');
           } else {
             snippet = String(msg.message.content);
           }
         }
         const label = agentName || description;
-        const truncated = snippet.slice(0, 200).replace(/\n/g, ' ');
+        const truncated = snippet.slice(0, 250).replace(/\n/g, ' ');
         turnBuffer.push(`Turn ${turnCount} (${label}): ${truncated}`);
       }
     }

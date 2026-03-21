@@ -25,6 +25,16 @@ export interface ResumeState {
   originalWorkflowId: string;
 }
 
+export interface FindingSummary {
+  total: number;
+  critical: number;
+  high: number;
+  medium: number;
+  low: number;
+  informational: number;
+  deduplicated: number;
+}
+
 export interface PipelineSummary {
   totalCostUsd: number;
   totalDurationMs: number; // Wall-clock time (end - start)
@@ -42,6 +52,7 @@ export interface PipelineState {
   startTime: number;
   agentMetrics: Record<string, AgentMetrics>;
   summary: PipelineSummary | null;
+  findingSummary: FindingSummary | null;
 }
 
 // Extended state returned by getProgress query (includes computed fields)

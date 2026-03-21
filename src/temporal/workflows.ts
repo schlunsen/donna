@@ -159,6 +159,7 @@ export async function pentestPipelineWorkflow(
     startTime: Date.now(),
     agentMetrics: {},
     summary: null,
+    findingSummary: null,
   };
 
   setHandler(getProgress, (): PipelineProgress => ({
@@ -543,7 +544,10 @@ export async function pentestPipelineWorkflow(
       await a.logPhaseTransition(activityInput, 'reporting', 'start');
 
       // First, assemble the concatenated report from exploitation evidence files
-      await a.assembleReportActivity(activityInput);
+      const findingSummary = await a.assembleReportActivity(activityInput);
+      if (findingSummary) {
+        state.findingSummary = findingSummary;
+      }
 
       // Then run the report agent to add executive summary and clean up
       state.agentMetrics['report'] = await a.runReportAgent(activityInput);
