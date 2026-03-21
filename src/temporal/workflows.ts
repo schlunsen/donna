@@ -431,7 +431,11 @@ export async function pentestPipelineWorkflow(
       };
     }
 
-    const maxConcurrent = input.pipelineConfig?.max_concurrent_pipelines ?? 5;
+    // Concurrency limit: prefer new concurrency.pipelines, fall back to max_concurrent_pipelines, default 5
+    const maxConcurrent =
+      input.pipelineConfig?.concurrency?.pipelines ??
+      input.pipelineConfig?.max_concurrent_pipelines ??
+      5;
 
     const pipelineConfigs = buildPipelineConfigs();
     const pipelineThunks: Array<() => Promise<VulnExploitPipelineResult>> = [];

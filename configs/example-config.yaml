@@ -48,3 +48,6 @@ rules:
 # pipeline:
 #   retry_preset: subscription          # 'default' or 'subscription' (6h max retry for rate limit recovery)
 #   max_concurrent_pipelines: 2         # 1-5, default: 5 (reduce to lower API usage spikes)
+#   concurrency:                        # Fine-grained concurrency limits
+#     pipelines: 3                      # Max concurrent vuln→exploit pipeline pairs (default: 5)
+#     max_browsers: 2                   # Max concurrent Playwright browser instances (default: 3)

@@ -89,8 +89,27 @@
         },
         "max_concurrent_pipelines": {
           "type": "string",
-          "pattern": "^[1-5]$",
-          "description": "Max concurrent vulnerability pipelines (1-5, default: 5)"
+          "pattern": "^[1-9][0-9]?$",
+          "description": "Max concurrent vulnerability pipelines (1-99, default: 5)"
+        },
+        "concurrency": {
+          "type": "object",
+          "description": "Fine-grained concurrency limits per resource type",
+          "properties": {
+            "pipelines": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 10,
+              "description": "Max concurrent vuln→exploit pipeline pairs (default: 5)"
+            },
+            "max_browsers": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 10,
+              "description": "Max concurrent Playwright browser instances (default: 3)"
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false
