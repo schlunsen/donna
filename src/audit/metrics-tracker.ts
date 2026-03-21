@@ -15,7 +15,7 @@ import {
   generateSessionJsonPath,
   type SessionMetadata,
 } from './utils.js';
-import { atomicWrite, readJson, fileExists } from '../utils/file-io.js';
+import { atomicWriteLocked, readJson, fileExists } from '../utils/file-io.js';
 import { formatTimestamp, calculatePercentage } from '../utils/formatting.js';
 import { AGENT_PHASE_MAP, type PhaseName } from '../session-manager.js';
 import { PentestError } from '../services/error-handling.js';
@@ -381,7 +381,12 @@ export class MetricsTracker {
    */
   private async save(): Promise<void> {
     if (!this.data) return;
-    await atomicWrite(this.sessionJsonPath, this.data);
+    await atomicWriteLocked(this.sessionJsonPath, this.data, {
+      retries: 5,
+      minTimeout: 100,
+      maxTimeout: 5000,
+      stale: 10000,
+    });
   }
 
   /**

@@ -12,6 +12,7 @@
  */
 
 import fs from 'fs/promises';
+import { lockedAtomicWrite, type FileLockOptions } from '../services/file-lock.js';
 
 /**
  * Ensure directory exists (idempotent, race-safe)
@@ -58,6 +59,22 @@ export async function atomicWrite(filePath: string, data: object | string): Prom
 export async function readJson<T = unknown>(filePath: string): Promise<T> {
   const content = await fs.readFile(filePath, 'utf8');
   return JSON.parse(content) as T;
+}
+
+/**
+ * Locked atomic write using file lock + temp file + rename pattern.
+ * Provides cross-process safety for concurrent file access.
+ *
+ * @param filePath - File to write to
+ * @param data - Data to write (objects are JSON-serialized)
+ * @param lockOptions - Optional lock retry/backoff configuration
+ */
+export async function atomicWriteLocked(
+  filePath: string,
+  data: object | string,
+  lockOptions?: FileLockOptions
+): Promise<void> {
+  await lockedAtomicWrite(filePath, data, lockOptions);
 }
 
 /**
