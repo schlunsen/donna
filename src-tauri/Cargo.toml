@@ -1,6 +1,6 @@
 [package]
 name = "donna-desktop"
-version = "1.0.0"
+version = "2.2.0"
 description = "Donna — Continuous AI Pentesting Desktop App"
 authors = ["schlunsen"]
 edition = "2021"
