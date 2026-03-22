@@ -396,6 +396,11 @@ const totalDurationSec = Math.round((progress?.summary?.totalDurationMs ?? sessi
                                             More Actions ▾
                                         </button>
                                         <div class="dropdown-menu" id="moreActionsMenu">
+                                            <button class="dropdown-item" data-action="start-new"
+                                                data-workflow-id={wf.workflowId} data-run-id={wf.runId}>
+                                                <span class="dropdown-item-icon">🚀</span>
+                                                Start New
+                                            </button>
                                             <button class="dropdown-item" data-action="restart"
                                                 data-workflow-id={wf.workflowId} data-run-id={wf.runId}>
                                                 <span class="dropdown-item-icon">🔄</span>
@@ -487,6 +492,17 @@ const totalDurationSec = Math.round((progress?.summary?.totalDurationMs ?? sessi
                                     <span class="wf-info-label">State Transitions</span>
                                     <span class="wf-info-value">{wf.historyLength}</span>
                                 </div>
+                                {(wf.input as any)?.parentRunId && (
+                                    <div class="wf-info-item">
+                                        <span class="wf-info-label">Parent Run</span>
+                                        <span class="wf-info-value">
+                                            <a href={`/workflow/${(wf.input as any).parentRunId}`} class="parent-run-link">
+                                                {(wf.input as any).parentRunId.substring(0, 8)}…
+                                                <span class="target-link-icon">↗</span>
+                                            </a>
+                                        </span>
+                                    </div>
+                                )}
                             </div>
                         </div>
 
@@ -1320,6 +1336,21 @@ const totalDurationSec = Math.round((progress?.summary?.totalDurationMs ?? sessi
                             const origText = item.innerHTML;
                             item.innerHTML = '<span class="dropdown-item-icon">✓</span> Copied!';
                             setTimeout(() => { item.innerHTML = origText; }, 1500);
+                        }
+                    } else if (action === 'start-new') {
+                        if (confirm('Start a new workflow with the same target and folder? The new run will be linked to this one for comparison.')) {
+                            try {
+                                const runId = item.dataset.runId;
+                                const res = await fetch('/api/workflow/' + runId + '?action=start-new', { method: 'POST' });
+                                const data = await res.json();
+                                if (res.ok && data.newRunId) {
+                                    window.location.href = '/workflow/' + data.newRunId;
+                                } else {
+                                    alert('Failed to start new workflow: ' + (data.error || 'Unknown error'));
+                                }
+                            } catch (err) {
+                                alert('Error: ' + err.message);
+                            }
                         }
                     } else if (action === 'restart') {
                         if (confirm('Restart this workflow with the same configuration?')) {

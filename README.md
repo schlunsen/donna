@@ -2,7 +2,9 @@
 
 <img src="./assets/github-banner.png" alt="Donna — Continuous AI Pentesting Platform" width="100%">
 
-# Donna — Continuous AI Pentesting
+# DONNA — Continuous AI Pentesting
+
+> **D**eviant **O**rchestration of **N**on-compliant **N**eural **A**gents
 
 **Continuous AI-powered security scanning with a real-time web dashboard.**
 

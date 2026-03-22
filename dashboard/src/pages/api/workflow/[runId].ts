@@ -216,7 +216,7 @@ export const POST: APIRoute = async ({ params, url }) => {
       });
     }
 
-    if (action === 'restart') {
+    if (action === 'restart' || action === 'start-new') {
       // Extract original input from workflow history
       const history = await handle.fetchHistory();
       const startEvent = history?.events?.find(
@@ -240,6 +240,39 @@ export const POST: APIRoute = async ({ params, url }) => {
 
       // Start a new workflow with the same input but a new ID
       const newWorkflowId = `${found.workflowId.replace(/-\d+$/, '')}-${Date.now()}`;
+
+      if (action === 'start-new') {
+        // Start New: fresh workflow on the same target & folder, linking back to parent
+        const newInput = {
+          webUrl: originalInput.webUrl,
+          repoPath: originalInput.repoPath,
+          ...(originalInput.pipelineTestingMode && { pipelineTestingMode: true }),
+          ...(originalInput.configPath && { configPath: originalInput.configPath }),
+          ...(originalInput.pipelineConfig && { pipelineConfig: originalInput.pipelineConfig }),
+          workflowId: newWorkflowId,
+          sessionId: newWorkflowId,
+          parentRunId: found.runId,
+        };
+
+        const newHandle = await client.workflow.start('pentestPipelineWorkflow', {
+          taskQueue: attrs?.taskQueue?.name || 'donna-pipeline',
+          workflowId: newWorkflowId,
+          args: [newInput],
+        });
+
+        return new Response(JSON.stringify({
+          success: true,
+          message: 'New workflow started from same settings',
+          newWorkflowId,
+          newRunId: newHandle.firstExecutionRunId,
+          parentRunId: found.runId,
+        }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      // Restart: clone all original input
       const newInput = { ...originalInput, workflowId: newWorkflowId, sessionId: newWorkflowId };
 
       const newHandle = await client.workflow.start('pentestPipelineWorkflow', {
