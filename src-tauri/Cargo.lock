@@ -916,6 +916,7 @@ name = "donna-desktop"
 version = "1.0.0"
 dependencies = [
  "env_logger",
+ "getrandom 0.3.4",
  "log",
  "portpicker",
  "serde",

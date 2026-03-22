@@ -12,7 +12,7 @@
  */
 
 import { execSync } from "node:child_process";
-import { existsSync, mkdirSync, copyFileSync } from "node:fs";
+import { existsSync, mkdirSync, copyFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { platform, arch } from "node:os";
 
@@ -69,8 +69,6 @@ function buildDashboardSidecar() {
   console.log("  Building Astro SSR...");
   run("npm run build", { cwd: dashboardDir, env: dashboardBuildEnv });
 
-  // Step 2: Package with @yao-pkg/pkg
-  // The Astro standalone adapter outputs to dist/server/entry.mjs
   const entryPoint = join(dashboardDir, "dist", "server", "entry.mjs");
 
   if (!existsSync(entryPoint)) {
@@ -80,20 +78,81 @@ function buildDashboardSidecar() {
     );
   }
 
+  // Instead of pkg (which can't handle Astro's dynamic ESM chunk imports),
+  // create a shell script wrapper that runs the Astro SSR server via Node.js.
+  // The dashboard dist/ folder is bundled as a Tauri resource.
   const triple = getPlatformTriple();
   const outputName = `donna-dashboard-${triple}`;
   const outputPath = join(SIDECARS_DIR, outputName);
 
-  // Use pkg to create a standalone binary
-  console.log("  Packaging with pkg...");
-  run(
-    `npx --yes @yao-pkg/pkg "${entryPoint}" ` +
-      `--target node22-${platform()}-${arch()} ` +
-      `--output "${outputPath}" ` +
-      `--compress GZip`,
-  );
+  console.log("  Creating dashboard launcher script...");
 
-  console.log(`  ✅ Dashboard sidecar: ${outputPath}`);
+  // Create a shell script that finds node and runs the Astro entry point
+  const scriptContent = `#!/bin/bash
+# Donna Dashboard Launcher — runs the Astro SSR server
+# This script is invoked by Tauri as a sidecar
+
+# Find node binary (macOS GUI apps don't inherit shell PATH)
+find_node() {
+  for candidate in \\
+    "$HOME/.nvm/versions/node/"*/bin/node \\
+    /usr/local/bin/node \\
+    /opt/homebrew/bin/node \\
+    /usr/bin/node \\
+    node; do
+    if [ -x "$candidate" ] 2>/dev/null; then
+      echo "$candidate"
+      return
+    fi
+  done
+  # Last resort: try to source nvm
+  if [ -s "$HOME/.nvm/nvm.sh" ]; then
+    . "$HOME/.nvm/nvm.sh" 2>/dev/null
+    command -v node 2>/dev/null && return
+  fi
+  echo "node"
+}
+
+NODE=$(find_node)
+
+# Resolve the dashboard dist directory relative to this script
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# In Tauri bundle: Contents/MacOS/donna-dashboard → Contents/Resources/dashboard-dist/
+DASHBOARD_DIR="$SCRIPT_DIR/../Resources/dashboard-dist"
+
+if [ ! -d "$DASHBOARD_DIR" ]; then
+  # Development fallback: script is at src-tauri/sidecars/donna-dashboard
+  DASHBOARD_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)/dashboard/dist"
+fi
+
+if [ ! -d "$DASHBOARD_DIR" ]; then
+  # Also try the bundled copy next to sidecars
+  DASHBOARD_DIR="$SCRIPT_DIR/../dashboard-dist"
+fi
+
+if [ ! -f "$DASHBOARD_DIR/server/entry.mjs" ]; then
+  echo "ERROR: Dashboard dist not found at $DASHBOARD_DIR" >&2
+  exit 1
+fi
+
+exec "$NODE" "$DASHBOARD_DIR/server/entry.mjs"
+`;
+
+  writeFileSync(outputPath, scriptContent, { mode: 0o755 });
+
+  // Also copy the dashboard dist folder to the sidecars area for bundling
+  const dashboardDistSrc = join(dashboardDir, "dist");
+  const dashboardDistDest = join(TAURI_DIR, "dashboard-dist");
+
+  // Remove old copy
+  if (existsSync(dashboardDistDest)) {
+    run(`rm -rf "${dashboardDistDest}"`);
+  }
+
+  console.log("  Copying dashboard dist for bundling...");
+  run(`cp -R "${dashboardDistSrc}" "${dashboardDistDest}"`);
+
+  console.log(`  ✅ Dashboard sidecar: ${outputPath} (+ dashboard-dist/)`);
 }
 
 function buildWorkerSidecar() {

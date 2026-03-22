@@ -44,7 +44,8 @@
     ],
     "targets": ["app"],
     "resources": [
-      "docker-compose.tauri.yml"
+      "docker-compose.tauri.yml",
+      "dashboard-dist/**/*"
     ],
     "externalBin": [
       "sidecars/donna-dashboard",

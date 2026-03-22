@@ -2,15 +2,36 @@ use tauri::{AppHandle, Manager};
 use tauri_plugin_shell::ShellExt;
 use tauri_plugin_shell::process::CommandEvent;
 
+/// Generate a random hex string for auth secrets
+fn generate_secret() -> String {
+    use std::fmt::Write;
+    let mut bytes = [0u8; 32];
+    getrandom::fill(&mut bytes).unwrap_or_default();
+    let mut hex = String::with_capacity(64);
+    for b in &bytes {
+        let _ = write!(hex, "{:02x}", b);
+    }
+    hex
+}
+
 /// Start the Astro SSR dashboard as a sidecar process
 pub async fn start_dashboard(app: &AppHandle, port: u16) -> Result<(), String> {
     let shell = app.shell();
+
+    // Generate a random auth secret for the desktop session.
+    // In desktop mode, auth is less critical (single-user, local only),
+    // but Better Auth requires it to start.
+    let auth_secret = generate_secret();
 
     let sidecar = shell
         .sidecar("donna-dashboard")
         .map_err(|e| format!("Failed to create dashboard sidecar: {}", e))?
         .env("PORT", port.to_string())
-        .env("HOST", "127.0.0.1".to_string());
+        .env("HOST", "127.0.0.1".to_string())
+        .env("BETTER_AUTH_SECRET", auth_secret)
+        .env("AUTH_BASE_URL", format!("http://localhost:{}", port))
+        .env("AUTH_TRUSTED_ORIGINS", format!("http://localhost:{}", port))
+        .env("TEMPORAL_ADDRESS", "localhost:7233".to_string());
 
     let (mut rx, _child) = sidecar
         .spawn()
