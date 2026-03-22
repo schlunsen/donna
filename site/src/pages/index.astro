@@ -37,7 +37,7 @@ const base = import.meta.env.BASE_URL;
         --font: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
         --font-mono: 'JetBrains Mono', monospace;
       }
-      html { background: var(--bg); scroll-behavior: smooth; }
+      html { background: transparent; scroll-behavior: smooth; }
       body {
         font-family: var(--font);
         color: var(--text);
@@ -60,7 +60,7 @@ const base = import.meta.env.BASE_URL;
 
       /* ── Layout ── */
       .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; }
-      section { padding: 100px 0; }
+      section { padding: 100px 0; background: transparent; }
 
       /* ── Nav ── */
       nav {
@@ -99,13 +99,7 @@ const base = import.meta.env.BASE_URL;
         text-align: center;
         position: relative;
         overflow: hidden;
-      }
-      .hero::before {
-        content: '';
-        position: absolute;
-        top: 0; left: 0; right: 0; bottom: 0;
-        background: radial-gradient(ellipse at center, transparent 0%, var(--bg) 75%);
-        pointer-events: none;
+        background: transparent;
       }
       .hero-eyebrow {
         font-size: 13px; text-transform: uppercase; letter-spacing: 3px;
@@ -224,7 +218,7 @@ const base = import.meta.env.BASE_URL;
 
       /* ── Quick start ── */
       .quickstart-code {
-        background: var(--bg-surface);
+        background: rgba(14,14,26,0.8);
         border: 1px solid var(--border);
         border-radius: 16px;
         padding: 32px;
