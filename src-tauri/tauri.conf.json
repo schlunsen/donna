@@ -20,7 +20,8 @@
         "center": true,
         "decorations": true,
         "resizable": true,
-        "visible": true
+        "visible": true,
+        "theme": "Dark"
       }
     ],
     "trayIcon": {
@@ -42,7 +43,7 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "targets": ["app"],
+    "targets": ["app", "dmg"],
     "resources": [
       "docker-compose.tauri.yml",
       "dashboard-dist/**/*"

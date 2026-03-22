@@ -107,7 +107,8 @@ fn find_dashboard_dir(app: &AppHandle) -> Result<std::path::PathBuf, String> {
 }
 
 /// Start the Astro SSR dashboard as a child process (not Tauri sidecar)
-pub async fn start_dashboard(app: &AppHandle, port: u16) -> Result<(), String> {
+/// Returns the TAURI_AUTH_TOKEN for auto-login navigation.
+pub async fn start_dashboard(app: &AppHandle, port: u16) -> Result<String, String> {
     let node = find_node();
     let dashboard_dir = find_dashboard_dir(app)?;
     // Canonicalize to get an absolute path, avoiding doubling
@@ -118,13 +119,15 @@ pub async fn start_dashboard(app: &AppHandle, port: u16) -> Result<(), String> {
     log::info!("Starting dashboard with node={}, entry={}", node, entry.display());
 
     let auth_secret = generate_secret();
+    let tauri_auth_token = generate_secret();
 
     let mut child = TokioCommand::new(&node)
         .arg(&entry)
         .current_dir(&dashboard_dir)
         .env("PORT", port.to_string())
         .env("HOST", "127.0.0.1")
-        .env("BETTER_AUTH_SECRET", auth_secret)
+        .env("BETTER_AUTH_SECRET", &auth_secret)
+        .env("TAURI_AUTH_TOKEN", &tauri_auth_token)
         .env("AUTH_BASE_URL", format!("http://localhost:{}", port))
         .env("AUTH_TRUSTED_ORIGINS", format!("http://localhost:{}", port))
         .env("TEMPORAL_ADDRESS", "localhost:7233")
@@ -174,10 +177,10 @@ pub async fn start_dashboard(app: &AppHandle, port: u16) -> Result<(), String> {
         }
     });
 
-    // Wait for the dashboard to start accepting connections
-    wait_for_port(port, 15).await?;
+    // Wait for the dashboard to start accepting connections (30s for cold start)
+    wait_for_port(port, 30).await?;
 
-    Ok(())
+    Ok(tauri_auth_token)
 }
 
 /// Start the Temporal worker as a sidecar process

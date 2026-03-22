@@ -3,13 +3,14 @@ mod sidecar;
 mod tray;
 
 use serde::{Deserialize, Serialize};
-use tauri::{Emitter, Manager};
+use tauri::{Emitter, Manager, Url};
 
 /// Application state shared across commands
 pub struct AppState {
     pub dashboard_port: u16,
     pub docker_running: std::sync::atomic::AtomicBool,
     pub scan_status: std::sync::Mutex<ScanStatus>,
+    pub tauri_auth_token: std::sync::Mutex<Option<String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -98,6 +99,7 @@ pub fn run() {
         dashboard_port,
         docker_running: std::sync::atomic::AtomicBool::new(false),
         scan_status: std::sync::Mutex::new(ScanStatus::default()),
+        tauri_auth_token: std::sync::Mutex::new(None),
     };
 
     tauri::Builder::default()
@@ -157,9 +159,23 @@ fn emit_progress(app: &tauri::AppHandle, step: &str, state: &str, message: &str)
     }));
 }
 
+/// Kill any lingering dashboard node processes from previous runs
+fn cleanup_stale_processes() {
+    // Use pkill to terminate any existing "node ... entry.mjs" processes
+    let _ = std::process::Command::new("pkill")
+        .args(["-f", "entry.mjs"])
+        .output();
+    // Brief pause to let processes exit
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    log::info!("Cleaned up stale dashboard processes (if any)");
+}
+
 /// Startup sequence: Docker → Temporal → Dashboard → Worker
 async fn startup_sequence(app: &tauri::AppHandle) {
     log::info!("Starting Donna desktop app...");
+
+    // Clean up any stale dashboard processes from previous runs
+    cleanup_stale_processes();
 
     // Show the loading screen immediately
     if let Some(window) = app.get_webview_window("main") {
@@ -217,16 +233,22 @@ async fn startup_sequence(app: &tauri::AppHandle) {
     // Step 4: Start dashboard sidecar
     let port = state.dashboard_port;
     emit_progress(app, "dashboard", "active", "Starting dashboard...");
-    match sidecar::start_dashboard(app, port).await {
-        Ok(_) => {
+    let tauri_auth_token = match sidecar::start_dashboard(app, port).await {
+        Ok(token) => {
             emit_progress(app, "dashboard", "done", &format!("Dashboard on port {}", port));
             log::info!("Dashboard started on port {}", port);
+            // Store token in app state for potential re-login
+            if let Ok(mut stored_token) = state.tauri_auth_token.lock() {
+                *stored_token = Some(token.clone());
+            }
+            Some(token)
         }
         Err(e) => {
             emit_progress(app, "dashboard", "failed", &format!("Dashboard failed: {}", e));
             log::error!("Failed to start dashboard: {}", e);
+            None
         }
-    }
+    };
 
     // Step 5: Start worker sidecar
     emit_progress(app, "worker", "active", "Starting worker...");
@@ -241,39 +263,54 @@ async fn startup_sequence(app: &tauri::AppHandle) {
         }
     }
 
-    // Step 6: Wait for the dashboard to accept HTTP connections, then navigate
-    let url = format!("http://localhost:{}", port);
-    emit_progress(app, "worker", "done", "Waiting for dashboard to be ready...");
+    // Step 6: Navigate WebView to the dashboard with auto-login
+    // start_dashboard() already waited for the port to be ready
+    if let Some(token) = tauri_auth_token {
+        // Navigate to the auto-login endpoint — it will set session cookies and redirect to /
+        let login_url = format!(
+            "http://localhost:{}/api/auth/tauri-login?token={}",
+            port, token
+        );
 
-    let mut dashboard_ready = false;
-    for attempt in 1..=30 {
-        log::info!("Checking dashboard readiness (attempt {}/30)...", attempt);
-        match tokio::net::TcpStream::connect(format!("127.0.0.1:{}", port)).await {
-            Ok(_) => {
-                dashboard_ready = true;
-                log::info!("Dashboard is accepting connections on port {}", port);
-                break;
+        // Small extra delay to ensure the HTTP server is fully initialized
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+
+        // Verify the dashboard is reachable before navigating
+        let dashboard_ready = tokio::net::TcpStream::connect(format!("127.0.0.1:{}", port))
+            .await
+            .is_ok();
+
+        if dashboard_ready {
+            log::info!("Dashboard reachable on port {}, navigating to auto-login...", port);
+            if let Some(window) = app.get_webview_window("main") {
+                match Url::parse(&login_url) {
+                    Ok(parsed_url) => {
+                        log::info!("Navigating WebView to auto-login endpoint");
+                        match window.navigate(parsed_url) {
+                            Ok(_) => log::info!("WebView navigation initiated successfully"),
+                            Err(e) => {
+                                log::error!("WebView navigate() failed: {} — trying eval fallback", e);
+                                let _ = window.eval(&format!("window.location.replace('{}');", login_url));
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        log::error!("Failed to parse login URL: {}", e);
+                    }
+                }
+            } else {
+                log::error!("Could not find main window for navigation!");
             }
-            Err(_) => {
-                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-            }
-        }
-    }
 
-    if dashboard_ready {
-        // Navigate the webview directly via JS eval (more reliable than events)
-        if let Some(window) = app.get_webview_window("main") {
-            let _ = window.eval(&format!("window.location.replace('{}');", url));
+            log::info!("Donna is ready!");
+            let _ = tauri_plugin_notification::NotificationExt::notification(app)
+                .builder()
+                .title("Donna")
+                .body("Donna is ready. Dashboard is running.")
+                .show();
+        } else {
+            emit_progress(app, "dashboard", "failed", "Dashboard is not reachable");
+            log::error!("Dashboard not reachable on port {} after startup", port);
         }
-
-        log::info!("Donna is ready!");
-        let _ = tauri_plugin_notification::NotificationExt::notification(app)
-            .builder()
-            .title("Donna")
-            .body("Donna is ready. Dashboard is running.")
-            .show();
-    } else {
-        emit_progress(app, "dashboard", "failed", "Dashboard didn't start in time");
-        log::error!("Dashboard failed to become ready within 30 seconds");
     }
 }

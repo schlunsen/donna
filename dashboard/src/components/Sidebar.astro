@@ -99,9 +99,40 @@ const { activePage = 'workflows', runningCount = 0, failedCount = 0 } = Astro.pr
     </nav>
 
     <div class="sidebar-footer">
+        <button class="theme-toggle" id="themeToggle" type="button" title="Toggle light/dark theme">
+            <span class="theme-toggle-icon" id="themeIcon">🌙</span>
+            <span id="themeLabel">Dark</span>
+        </button>
         <a href="/api/auth/sign-out-action" class="sidebar-footer-link" style="text-decoration: none;">
             <span class="sidebar-link-icon">🚪</span>
             <span>Sign Out</span>
         </a>
     </div>
 </aside>
+
+<script is:inline>
+    // ── Theme toggle ──
+    (function() {
+        var btn = document.getElementById('themeToggle');
+        var icon = document.getElementById('themeIcon');
+        var label = document.getElementById('themeLabel');
+
+        function update() {
+            var theme = document.documentElement.getAttribute('data-theme') || 'dark';
+            if (icon) icon.textContent = theme === 'dark' ? '🌙' : '☀️';
+            if (label) label.textContent = theme === 'dark' ? 'Dark' : 'Light';
+        }
+
+        update();
+
+        if (btn) {
+            btn.addEventListener('click', function() {
+                var current = document.documentElement.getAttribute('data-theme') || 'dark';
+                var next = current === 'dark' ? 'light' : 'dark';
+                document.documentElement.setAttribute('data-theme', next);
+                localStorage.setItem('donna-theme', next);
+                update();
+            });
+        }
+    })();
+</script>

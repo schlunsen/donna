@@ -21,11 +21,19 @@ const dataDir = process.env.AUTH_DB_DIR || path.join(process.cwd(), 'data');
 fs.mkdirSync(dataDir, { recursive: true });
 const dbPath = path.join(dataDir, 'auth.db');
 
+// Tauri desktop mode — auto-login is enabled when this env var is set by the Tauri app
+const isTauriMode = !!process.env.TAURI_AUTH_TOKEN;
+const DESKTOP_EMAIL = 'desktop@donna.local';
+
 // Allowed emails for Google OAuth sign-up (comma-separated env var or hardcoded defaults)
 // Only these emails can create accounts via Google. Existing accounts can always sign in.
-const ALLOWED_EMAILS = process.env.AUTH_ALLOWED_EMAILS
-  ? process.env.AUTH_ALLOWED_EMAILS.split(',').map((e) => e.trim().toLowerCase())
-  : [];
+// In Tauri mode, the desktop user email is always allowed.
+const ALLOWED_EMAILS = [
+  ...(process.env.AUTH_ALLOWED_EMAILS
+    ? process.env.AUTH_ALLOWED_EMAILS.split(',').map((e) => e.trim().toLowerCase())
+    : []),
+  ...(isTauriMode ? [DESKTOP_EMAIL] : []),
+];
 
 // Validate BETTER_AUTH_SECRET on startup — sessions are insecure without it
 const authSecret = process.env.BETTER_AUTH_SECRET;
@@ -50,9 +58,10 @@ export const auth = betterAuth({
   // Base URL for auth callbacks (must match your deployment domain)
   baseURL: process.env.AUTH_BASE_URL || 'http://localhost:4321',
 
-  // Email + password authentication (disabled — Google OAuth only)
+  // Email + password authentication
+  // Enabled in Tauri desktop mode for auto-login; disabled otherwise (Google OAuth only)
   emailAndPassword: {
-    enabled: false,
+    enabled: isTauriMode,
   },
 
   // Google OAuth (optional — only enabled when env vars are set)
@@ -82,11 +91,13 @@ export const auth = betterAuth({
     ? process.env.AUTH_TRUSTED_ORIGINS.split(',')
     : ['http://localhost:4321'],
 
-  // Hook: restrict sign-ups to allowed emails only
+  // Hook: restrict sign-ups to allowed emails only (skip if no allowlist configured)
   databaseHooks: {
     user: {
       create: {
         before: async (user) => {
+          // If no allowlist is configured, allow all sign-ups
+          if (ALLOWED_EMAILS.length === 0) return user;
           const email = (user.email || '').toLowerCase();
           if (!ALLOWED_EMAILS.includes(email)) {
             // Reject — this email is not in the allowlist
