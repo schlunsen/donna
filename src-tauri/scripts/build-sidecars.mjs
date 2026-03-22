@@ -48,14 +48,26 @@ function run(cmd, opts = {}) {
   execSync(cmd, { stdio: "inherit", ...opts });
 }
 
+// Environment variables needed for the dashboard build.
+// BETTER_AUTH_SECRET is validated at import time by auth.ts — we provide a
+// build-time placeholder so the Astro SSR build succeeds. The real secret
+// is injected at runtime via Tauri's Stronghold plugin or env vars.
+const dashboardBuildEnv = {
+  ...process.env,
+  BETTER_AUTH_SECRET:
+    process.env.BETTER_AUTH_SECRET ||
+    "tauri-build-placeholder-secret-not-used-at-runtime-0000",
+};
+
 function buildDashboardSidecar() {
   console.log("\n📦 Building Dashboard sidecar...\n");
 
   const dashboardDir = join(ROOT, "dashboard");
 
   // Step 1: Build the Astro SSR app
+  // Provide BETTER_AUTH_SECRET so auth.ts doesn't process.exit(1) during build
   console.log("  Building Astro SSR...");
-  run("npm run build", { cwd: dashboardDir });
+  run("npm run build", { cwd: dashboardDir, env: dashboardBuildEnv });
 
   // Step 2: Package with @yao-pkg/pkg
   // The Astro standalone adapter outputs to dist/server/entry.mjs
