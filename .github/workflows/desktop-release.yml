@@ -19,7 +19,7 @@ jobs:
           - platform: macos-latest
             target: aarch64-apple-darwin
             label: macOS (Apple Silicon)
-          - platform: macos-13
+          - platform: macos-14
             target: x86_64-apple-darwin
             label: macOS (Intel)
           - platform: ubuntu-22.04
@@ -72,6 +72,10 @@ jobs:
         run: |
           npm ci
           cd dashboard && npm ci
+          cd ../mcp-server && npm ci
+
+      - name: Build MCP server
+        run: cd mcp-server && npm run build
 
       - name: Build sidecars
         run: npm run tauri:build-sidecars
