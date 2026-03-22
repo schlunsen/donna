@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 500" fill="none">
+  <defs>
+    <radialGradient id="glow1" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#7B2D8E" stop-opacity="0.3"/>
+      <stop offset="100%" stop-color="#0a0a14" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="core" cx="50%" cy="45%" r="35%">
+      <stop offset="0%" stop-color="#C090C0" stop-opacity="0.15"/>
+      <stop offset="100%" stop-color="#0a0a14" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="blur1" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="8"/>
+    </filter>
+    <filter id="blur2" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="3"/>
+    </filter>
+  </defs>
+  <!-- Background glow -->
+  <ellipse cx="300" cy="230" rx="280" ry="250" fill="url(#glow1)"/>
+  <ellipse cx="300" cy="220" rx="180" ry="160" fill="url(#core)"/>
+  <!-- Shield outer -->
+  <path d="M300 60 L440 130 L440 260 C440 340 300 400 300 400 C300 400 160 340 160 260 L160 130 Z"
+        stroke="#7B2D8E" stroke-width="2" opacity="0.5" filter="url(#blur2)"/>
+  <path d="M300 60 L440 130 L440 260 C440 340 300 400 300 400 C300 400 160 340 160 260 L160 130 Z"
+        stroke="#7B2D8E" stroke-width="1.5" opacity="0.7"/>
+  <!-- Shield inner -->
+  <path d="M300 90 L420 150 L420 255 C420 325 300 375 300 375 C300 375 180 325 180 255 L180 150 Z"
+        stroke="#C090C0" stroke-width="0.8" opacity="0.3"/>
+  <!-- Neural network inside shield -->
+  <!-- Central node -->
+  <circle cx="300" cy="200" r="18" stroke="#7B2D8E" stroke-width="1.5" opacity="0.8"/>
+  <circle cx="300" cy="200" r="6" fill="#C090C0" opacity="0.7"/>
+  <!-- Ring of nodes -->
+  <circle cx="300" cy="140" r="4" fill="#C090C0" opacity="0.5"/>
+  <circle cx="355" cy="170" r="4" fill="#C090C0" opacity="0.5"/>
+  <circle cx="355" cy="230" r="4" fill="#C090C0" opacity="0.5"/>
+  <circle cx="300" cy="260" r="4" fill="#C090C0" opacity="0.5"/>
+  <circle cx="245" cy="230" r="4" fill="#C090C0" opacity="0.5"/>
+  <circle cx="245" cy="170" r="4" fill="#C090C0" opacity="0.5"/>
+  <!-- Connections -->
+  <line x1="300" y1="200" x2="300" y2="140" stroke="#7B2D8E" stroke-width="0.8" opacity="0.4"/>
+  <line x1="300" y1="200" x2="355" y2="170" stroke="#7B2D8E" stroke-width="0.8" opacity="0.4"/>
+  <line x1="300" y1="200" x2="355" y2="230" stroke="#7B2D8E" stroke-width="0.8" opacity="0.4"/>
+  <line x1="300" y1="200" x2="300" y2="260" stroke="#7B2D8E" stroke-width="0.8" opacity="0.4"/>
+  <line x1="300" y1="200" x2="245" y2="230" stroke="#7B2D8E" stroke-width="0.8" opacity="0.4"/>
+  <line x1="300" y1="200" x2="245" y2="170" stroke="#7B2D8E" stroke-width="0.8" opacity="0.4"/>
+  <!-- Outer connections -->
+  <line x1="300" y1="140" x2="355" y2="170" stroke="#C090C0" stroke-width="0.5" opacity="0.25"/>
+  <line x1="355" y1="170" x2="355" y2="230" stroke="#C090C0" stroke-width="0.5" opacity="0.25"/>
+  <line x1="355" y1="230" x2="300" y2="260" stroke="#C090C0" stroke-width="0.5" opacity="0.25"/>
+  <line x1="300" y1="260" x2="245" y2="230" stroke="#C090C0" stroke-width="0.5" opacity="0.25"/>
+  <line x1="245" y1="230" x2="245" y2="170" stroke="#C090C0" stroke-width="0.5" opacity="0.25"/>
+  <line x1="245" y1="170" x2="300" y2="140" stroke="#C090C0" stroke-width="0.5" opacity="0.25"/>
+  <!-- Outer orbit nodes -->
+  <circle cx="300" cy="100" r="3" fill="#60A5FA" opacity="0.4"/>
+  <circle cx="390" cy="150" r="3" fill="#60A5FA" opacity="0.4"/>
+  <circle cx="390" cy="260" r="3" fill="#60A5FA" opacity="0.4"/>
+  <circle cx="300" cy="310" r="3" fill="#60A5FA" opacity="0.4"/>
+  <circle cx="210" cy="260" r="3" fill="#60A5FA" opacity="0.4"/>
+  <circle cx="210" cy="150" r="3" fill="#60A5FA" opacity="0.4"/>
+  <!-- Outer orbit lines -->
+  <line x1="300" y1="140" x2="300" y2="100" stroke="#60A5FA" stroke-width="0.5" opacity="0.2"/>
+  <line x1="355" y1="170" x2="390" y2="150" stroke="#60A5FA" stroke-width="0.5" opacity="0.2"/>
+  <line x1="355" y1="230" x2="390" y2="260" stroke="#60A5FA" stroke-width="0.5" opacity="0.2"/>
+  <line x1="300" y1="260" x2="300" y2="310" stroke="#60A5FA" stroke-width="0.5" opacity="0.2"/>
+  <line x1="245" y1="230" x2="210" y2="260" stroke="#60A5FA" stroke-width="0.5" opacity="0.2"/>
+  <line x1="245" y1="170" x2="210" y2="150" stroke="#60A5FA" stroke-width="0.5" opacity="0.2"/>
+  <!-- Data flow particles (decorative dots) -->
+  <circle cx="300" cy="120" r="1.5" fill="#C090C0" opacity="0.6"/>
+  <circle cx="330" cy="155" r="1.5" fill="#C090C0" opacity="0.6"/>
+  <circle cx="330" cy="215" r="1.5" fill="#C090C0" opacity="0.6"/>
+  <circle cx="270" cy="155" r="1.5" fill="#C090C0" opacity="0.6"/>
+  <circle cx="270" cy="215" r="1.5" fill="#C090C0" opacity="0.6"/>
+  <circle cx="300" cy="240" r="1.5" fill="#C090C0" opacity="0.6"/>
+  <!-- Scan lines decorative -->
+  <path d="M300 65 L300 55" stroke="#7B2D8E" stroke-width="0.5" opacity="0.3"/>
+  <path d="M320 68 L325 58" stroke="#7B2D8E" stroke-width="0.5" opacity="0.3"/>
+  <path d="M280 68 L275 58" stroke="#7B2D8E" stroke-width="0.5" opacity="0.3"/>
+</svg>

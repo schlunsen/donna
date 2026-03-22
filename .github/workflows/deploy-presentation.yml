@@ -1,12 +1,10 @@
-name: Deploy Presentation to GitHub Pages
+name: Deploy Site to GitHub Pages
 
 on:
   push:
     branches: [main]
     paths:
-      - 'dashboard/src/pages/presentation.astro'
-      - 'dashboard/public/presentation-*'
-      - 'dashboard/public/three.min.js'
+      - 'site/**'
       - '.github/workflows/deploy-presentation.yml'
   workflow_dispatch:
 
@@ -31,41 +29,20 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: dashboard/package-lock.json
+          cache-dependency-path: site/package-lock.json
 
       - name: Install dependencies
-        working-directory: dashboard
+        working-directory: site
         run: npm ci
 
-      - name: Build presentation (static)
-        working-directory: dashboard
-        env:
-          # Dummy secret — only needed so Better Auth doesn't abort the build.
-          # The presentation page itself requires no auth.
-          BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET || 'gh-pages-build-placeholder-secret-value-0123456789abcdef' }}
-        run: npx astro build
-
-      - name: Prepare Pages artifact
-        run: |
-          mkdir -p _site
-          # Copy the prerendered presentation page
-          cp dashboard/dist/client/presentation/index.html _site/index.html
-          # Copy all public assets needed by the presentation
-          cp dashboard/dist/client/presentation-styles.css _site/
-          cp dashboard/dist/client/presentation-script.js _site/
-          cp dashboard/dist/client/presentation-bg.js _site/
-          cp dashboard/dist/client/three.min.js _site/
-          cp -r dashboard/dist/client/presentation-images _site/
-          cp -r dashboard/dist/client/presentation-audio _site/
-          # Rewrite absolute paths to relative (GitHub Pages serves under /donna/)
-          sed -i 's|href="/presentation-|href="./presentation-|g' _site/index.html
-          sed -i 's|src="/presentation-|src="./presentation-|g' _site/index.html
-          sed -i 's|src="/three.min.js"|src="./three.min.js"|g' _site/index.html
-          sed -i 's|`/presentation-audio/|`./presentation-audio/|g' _site/presentation-script.js
-          sed -i "s|'/presentation-audio/|'./presentation-audio/|g" _site/presentation-script.js
+      - name: Build
+        working-directory: site
+        run: npm run build
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
+        with:
+          path: site/dist
 
   deploy:
     needs: build

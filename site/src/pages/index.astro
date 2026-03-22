@@ -1,0 +1,488 @@
+---
+// Donna — Landing page for GitHub Pages
+const base = import.meta.env.BASE_URL;
+---
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Donna — Continuous AI Pentesting Platform</title>
+    <meta name="description" content="Autonomous AI-powered continuous pentesting with 13 specialized agents, Temporal orchestration, and a real-time web dashboard." />
+    <link rel="icon" type="image/svg+xml" href={`${base}favicon.svg`} />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+    <style>
+      /* ── Reset & Tokens ── */
+      *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+      :root {
+        --bg: #0a0a14;
+        --bg-surface: #0e0e1a;
+        --bg-card: rgba(255,255,255,0.03);
+        --border: rgba(255,255,255,0.06);
+        --border-hover: rgba(255,255,255,0.12);
+        --purple: #7B2D8E;
+        --purple-dark: #3F0E40;
+        --purple-glow: rgba(123,45,142,0.4);
+        --purple-light: #C090C0;
+        --text: #e0e0e0;
+        --text-muted: #9a9ab0;
+        --text-dim: #6a6a80;
+        --success: #4ADE80;
+        --error: #F87171;
+        --warning: #FBBF24;
+        --info: #60A5FA;
+        --font: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        --font-mono: 'JetBrains Mono', monospace;
+      }
+      html { background: var(--bg); scroll-behavior: smooth; }
+      body {
+        font-family: var(--font);
+        color: var(--text);
+        -webkit-font-smoothing: antialiased;
+        line-height: 1.6;
+      }
+
+      /* ── Layout ── */
+      .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+      section { padding: 100px 0; }
+
+      /* ── Nav ── */
+      nav {
+        position: fixed; top: 0; left: 0; right: 0; z-index: 50;
+        background: rgba(10,10,20,0.85);
+        backdrop-filter: blur(12px);
+        border-bottom: 1px solid var(--border);
+      }
+      .nav-inner {
+        max-width: 1100px; margin: 0 auto; padding: 0 24px;
+        display: flex; align-items: center; justify-content: space-between;
+        height: 60px;
+      }
+      .nav-brand {
+        display: flex; align-items: center; gap: 10px;
+        font-weight: 700; font-size: 18px; color: var(--text);
+        text-decoration: none;
+      }
+      .nav-brand img { width: 28px; height: 28px; border-radius: 6px; }
+      .nav-links { display: flex; align-items: center; gap: 24px; }
+      .nav-links a {
+        color: var(--text-muted); text-decoration: none; font-size: 14px;
+        transition: color 0.2s;
+      }
+      .nav-links a:hover { color: var(--text); }
+      .nav-links .btn-sm {
+        padding: 6px 16px; border-radius: 8px;
+        background: var(--purple); color: #fff; font-weight: 500;
+        transition: background 0.2s;
+      }
+      .nav-links .btn-sm:hover { background: #9B3DAE; }
+
+      /* ── Hero ── */
+      .hero {
+        padding: 160px 0 100px;
+        text-align: center;
+        position: relative;
+        overflow: hidden;
+      }
+      .hero::before {
+        content: '';
+        position: absolute;
+        top: -200px; left: 50%; transform: translateX(-50%);
+        width: 800px; height: 800px;
+        background: radial-gradient(circle, var(--purple-glow) 0%, transparent 70%);
+        opacity: 0.3;
+        pointer-events: none;
+      }
+      .hero-eyebrow {
+        font-size: 13px; text-transform: uppercase; letter-spacing: 3px;
+        color: var(--purple-light); margin-bottom: 16px;
+      }
+      .hero h1 {
+        font-size: clamp(48px, 8vw, 80px);
+        font-weight: 900; line-height: 1.05;
+        background: linear-gradient(135deg, #fff 30%, var(--purple-light));
+        -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+        background-clip: text;
+      }
+      .hero-sub {
+        font-size: clamp(18px, 2.5vw, 22px);
+        color: var(--text-muted); max-width: 640px; margin: 20px auto 0;
+        line-height: 1.5;
+      }
+      .hero-cta {
+        display: flex; gap: 16px; justify-content: center;
+        margin-top: 40px; flex-wrap: wrap;
+      }
+      .btn {
+        display: inline-flex; align-items: center; gap: 8px;
+        padding: 14px 28px; border-radius: 12px;
+        font-size: 15px; font-weight: 600;
+        text-decoration: none; transition: all 0.2s;
+      }
+      .btn-primary {
+        background: var(--purple); color: #fff;
+        box-shadow: 0 0 30px var(--purple-glow);
+      }
+      .btn-primary:hover { background: #9B3DAE; transform: translateY(-1px); }
+      .btn-outline {
+        background: transparent; color: var(--text);
+        border: 1px solid var(--border-hover);
+      }
+      .btn-outline:hover { border-color: var(--purple); background: rgba(123,45,142,0.1); }
+
+      .hero-image {
+        margin-top: 60px;
+        border-radius: 16px;
+        overflow: hidden;
+        border: 1px solid var(--border);
+        box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+      }
+      .hero-image img { width: 100%; display: block; }
+
+      /* ── Section headings ── */
+      .section-eyebrow {
+        font-size: 12px; text-transform: uppercase; letter-spacing: 3px;
+        color: var(--purple-light); margin-bottom: 12px;
+      }
+      .section-title {
+        font-size: clamp(32px, 5vw, 44px);
+        font-weight: 800; line-height: 1.15;
+        margin-bottom: 16px;
+      }
+      .section-desc {
+        font-size: 17px; color: var(--text-muted);
+        max-width: 600px; line-height: 1.6;
+      }
+      .section-header { text-align: center; margin-bottom: 60px; }
+      .section-header .section-desc { margin: 0 auto; }
+
+      /* ── Features grid ── */
+      .features-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 20px;
+      }
+      .feature-card {
+        padding: 28px;
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        transition: border-color 0.2s, transform 0.2s;
+      }
+      .feature-card:hover {
+        border-color: var(--border-hover);
+        transform: translateY(-2px);
+      }
+      .feature-icon {
+        width: 44px; height: 44px;
+        display: flex; align-items: center; justify-content: center;
+        border-radius: 12px; margin-bottom: 16px;
+        background: rgba(123,45,142,0.12);
+      }
+      .feature-card h3 {
+        font-size: 17px; font-weight: 700; margin-bottom: 8px;
+      }
+      .feature-card p {
+        font-size: 14px; color: var(--text-muted); line-height: 1.6;
+      }
+
+      /* ── Pipeline ── */
+      .pipeline-section { background: var(--bg-surface); }
+      .pipeline {
+        display: flex; align-items: flex-start; gap: 0;
+        position: relative;
+      }
+      .pipe-step {
+        flex: 1; text-align: center; padding: 0 16px;
+        position: relative;
+      }
+      .pipe-num {
+        width: 48px; height: 48px;
+        border-radius: 50%; margin: 0 auto 16px;
+        display: flex; align-items: center; justify-content: center;
+        font-weight: 800; font-size: 18px;
+        border: 2px solid var(--purple);
+        color: var(--purple-light);
+        background: rgba(123,45,142,0.1);
+        position: relative; z-index: 1;
+      }
+      .pipe-step h3 { font-size: 16px; font-weight: 700; margin-bottom: 6px; }
+      .pipe-step p { font-size: 13px; color: var(--text-muted); }
+      .pipe-step:not(:last-child)::after {
+        content: '';
+        position: absolute;
+        top: 24px; left: calc(50% + 28px); right: calc(-50% + 28px);
+        height: 2px;
+        background: linear-gradient(90deg, var(--purple), rgba(123,45,142,0.2));
+      }
+
+      /* ── Quick start ── */
+      .quickstart-code {
+        background: var(--bg-surface);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 32px;
+        overflow-x: auto;
+        max-width: 720px;
+        margin: 0 auto;
+      }
+      .quickstart-code pre {
+        font-family: var(--font-mono);
+        font-size: 14px;
+        line-height: 1.7;
+        color: var(--text-muted);
+      }
+      .quickstart-code .comment { color: var(--text-dim); }
+      .quickstart-code .cmd { color: var(--success); }
+
+      /* ── CTA ── */
+      .cta-section {
+        text-align: center;
+        background: linear-gradient(180deg, var(--bg) 0%, var(--bg-surface) 100%);
+      }
+      .cta-section .section-title {
+        background: linear-gradient(135deg, #fff 30%, var(--purple-light));
+        -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+        background-clip: text;
+      }
+
+      /* ── Footer ── */
+      footer {
+        padding: 40px 0;
+        border-top: 1px solid var(--border);
+        text-align: center;
+      }
+      .footer-links {
+        display: flex; justify-content: center; gap: 24px;
+        flex-wrap: wrap;
+      }
+      .footer-links a {
+        color: var(--text-dim); text-decoration: none; font-size: 13px;
+        transition: color 0.2s;
+      }
+      .footer-links a:hover { color: var(--text-muted); }
+      .footer-copy {
+        margin-top: 16px; font-size: 12px; color: var(--text-dim);
+      }
+
+      /* ── Responsive ── */
+      @media (max-width: 768px) {
+        section { padding: 60px 0; }
+        .hero { padding: 120px 0 60px; }
+        .pipeline { flex-direction: column; gap: 32px; }
+        .pipe-step:not(:last-child)::after { display: none; }
+        .features-grid { grid-template-columns: 1fr; }
+      }
+    </style>
+</head>
+<body>
+
+  <!-- ── Nav ── -->
+  <nav>
+    <div class="nav-inner">
+      <a class="nav-brand" href={base}>
+        <img src={`${base}donna-icon.png`} alt="Donna" />
+        Donna
+      </a>
+      <div class="nav-links">
+        <a href="#features">Features</a>
+        <a href="#pipeline">How It Works</a>
+        <a href="#quickstart">Quick Start</a>
+        <a href={`${base}presentation/`}>Presentation</a>
+        <a class="btn-sm" href="https://github.com/schlunsen/donna" target="_blank" rel="noopener">
+          <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor" style="vertical-align: -2px; margin-right: 4px"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+          GitHub
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ── Hero ── -->
+  <section class="hero">
+    <div class="container">
+      <p class="hero-eyebrow">Autonomous Security Testing</p>
+      <h1>Donna</h1>
+      <p class="hero-sub">
+        13 AI agents working around the clock to find every vulnerability before attackers do.
+        Continuous pentesting with a real-time web dashboard.
+      </p>
+      <div class="hero-cta">
+        <a class="btn btn-primary" href={`${base}presentation/`}>
+          <svg viewBox="0 0 20 20" width="16" height="16" fill="currentColor"><polygon points="6,3 6,17 17,10"/></svg>
+          Watch Presentation
+        </a>
+        <a class="btn btn-outline" href="https://github.com/schlunsen/donna" target="_blank" rel="noopener">
+          <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+          View on GitHub
+        </a>
+      </div>
+      <div class="hero-image">
+        <img src={`${base}donna-screen.png`} alt="Donna dashboard screenshot" />
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Features ── -->
+  <section id="features">
+    <div class="container">
+      <div class="section-header">
+        <p class="section-eyebrow">Features</p>
+        <h2 class="section-title">Why Donna?</h2>
+        <p class="section-desc">Donna isn't just a one-shot scanner &mdash; it's a full pentesting platform that runs while you sleep.</p>
+      </div>
+      <div class="features-grid">
+        <div class="feature-card">
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#60A5FA" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+          </div>
+          <h3>Donna Sentinel</h3>
+          <p>Continuous scanning via Temporal cron workflows. Watches git repos, detects changes, runs incremental pentests automatically.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="var(--purple-light)" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M8 12h8M12 8v8"/></svg>
+          </div>
+          <h3>Web Dashboard</h3>
+          <p>Real-time Astro-based dashboard with workflow list, live agent logs, findings panel, and severity tracking.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="var(--success)" stroke-width="2"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg>
+          </div>
+          <h3>Finding Lifecycle</h3>
+          <p>Tracks findings across scans (new &rarr; confirmed &rarr; resolved) with persistent baselines. Nothing slips through.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="var(--warning)" stroke-width="2"><path d="M4 4h16v16H4z"/><path d="M4 12h16M12 4v16"/></svg>
+          </div>
+          <h3>Smart Deduplication</h3>
+          <p>Normalizes, classifies, and merges duplicate findings using CVSS 3.1, CWE classification, and endpoint canonicalization.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="var(--error)" stroke-width="2"><path d="M12 2L2 7v10l10 5 10-5V7L12 2z"/><path d="M12 22V12M12 12L2 7M12 12l10-5"/></svg>
+          </div>
+          <h3>Exploitation Feedback</h3>
+          <p>Iterative refinement loop &mdash; failed exploits feed context back into retry attempts for better coverage.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="var(--info)" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+          </div>
+          <h3>Slack / Discord Alerts</h3>
+          <p>Webhook notifications on new or resolved findings. Stay informed without watching the dashboard.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#60A5FA" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+          </div>
+          <h3>Live Streaming</h3>
+          <p>Real-time agent turn streaming via heartbeat-based TurnBuffer, viewable live in the dashboard.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="var(--success)" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          </div>
+          <h3>Security Hardening</h3>
+          <p>CSRF protection, rate limiting, security headers, input validation, and scoped Docker permissions built in.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Pipeline ── -->
+  <section id="pipeline" class="pipeline-section">
+    <div class="container">
+      <div class="section-header">
+        <p class="section-eyebrow">How It Works</p>
+        <h2 class="section-title">The Pentesting Pipeline</h2>
+        <p class="section-desc">Four phases, fully automated, backed by durable Temporal workflows that survive crashes and auto-retry on failure.</p>
+      </div>
+      <div class="pipeline">
+        <div class="pipe-step">
+          <div class="pipe-num">1</div>
+          <h3>Reconnaissance</h3>
+          <p>Port scanning, tech detection, OSINT gathering, attack surface enumeration</p>
+        </div>
+        <div class="pipe-step">
+          <div class="pipe-num">2</div>
+          <h3>Analysis</h3>
+          <p>Vulnerability scanning, weakness identification, attack vector mapping</p>
+        </div>
+        <div class="pipe-step">
+          <div class="pipe-num">3</div>
+          <h3>Exploitation</h3>
+          <p>PoC validation, payload crafting, privilege escalation, evidence collection</p>
+        </div>
+        <div class="pipe-step">
+          <div class="pipe-num">4</div>
+          <h3>Reporting</h3>
+          <p>Structured findings with severity, evidence, and remediation steps</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Quick Start ── -->
+  <section id="quickstart">
+    <div class="container">
+      <div class="section-header">
+        <p class="section-eyebrow">Get Started</p>
+        <h2 class="section-title">Up and running in minutes</h2>
+        <p class="section-desc">Clone, configure, and run your first pentest.</p>
+      </div>
+      <div class="quickstart-code">
+        <pre><span class="comment"># 1. Clone and configure</span>
+<span class="cmd">git clone https://github.com/schlunsen/donna.git</span>
+<span class="cmd">cd donna</span>
+<span class="cmd">cp .env.example .env</span>   <span class="comment"># Add your ANTHROPIC_API_KEY</span>
+
+<span class="comment"># 2. Place your target repo</span>
+<span class="cmd">git clone https://github.com/your-org/your-app.git ./repos/your-app</span>
+
+<span class="comment"># 3. Run a pentest</span>
+<span class="cmd">./donna start URL=https://your-app.com REPO=your-app</span>
+
+<span class="comment"># 4. Open the dashboard</span>
+<span class="cmd">just dashboard-ui</span>    <span class="comment"># http://localhost:4321</span></pre>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── CTA ── -->
+  <section class="cta-section">
+    <div class="container">
+      <div class="section-header">
+        <h2 class="section-title">Secure your infrastructure.<br/>Automatically.</h2>
+        <p class="section-desc">13 AI agents. Temporal orchestration. Full reports. Open source.</p>
+      </div>
+      <div class="hero-cta">
+        <a class="btn btn-primary" href="https://github.com/schlunsen/donna" target="_blank" rel="noopener">
+          <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+          Get Started
+        </a>
+        <a class="btn btn-outline" href={`${base}presentation/`}>
+          Watch Presentation
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Footer ── -->
+  <footer>
+    <div class="container">
+      <div class="footer-links">
+        <a href="https://github.com/schlunsen/donna" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://github.com/schlunsen/donna/blob/main/LICENSE" target="_blank" rel="noopener">AGPL-3.0 License</a>
+        <a href={`${base}presentation/`}>Presentation</a>
+      </div>
+      <p class="footer-copy">Donna &mdash; Continuous AI Pentesting Platform</p>
+    </div>
+  </footer>
+
+</body>
+</html>

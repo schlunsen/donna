@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 300" fill="none">
+  <defs>
+    <linearGradient id="flow" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#60A5FA" stop-opacity="0.6"/>
+      <stop offset="50%" stop-color="#7B2D8E" stop-opacity="0.6"/>
+      <stop offset="100%" stop-color="#4ADE80" stop-opacity="0.6"/>
+    </linearGradient>
+    <radialGradient id="ng1" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#60A5FA" stop-opacity="0.2"/>
+      <stop offset="100%" stop-color="#0a0a14" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="ng2" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#FBBF24" stop-opacity="0.2"/>
+      <stop offset="100%" stop-color="#0a0a14" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="ng3" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#F87171" stop-opacity="0.2"/>
+      <stop offset="100%" stop-color="#0a0a14" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="ng4" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#4ADE80" stop-opacity="0.2"/>
+      <stop offset="100%" stop-color="#0a0a14" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <!-- Flow line -->
+  <line x1="140" y1="150" x2="560" y2="150" stroke="url(#flow)" stroke-width="1.5" opacity="0.4"/>
+  <!-- Flow arrows -->
+  <path d="M220 150 L235 143 L235 157 Z" fill="#60A5FA" opacity="0.3"/>
+  <path d="M370 150 L385 143 L385 157 Z" fill="#7B2D8E" opacity="0.3"/>
+  <path d="M520 150 L535 143 L535 157 Z" fill="#4ADE80" opacity="0.3"/>
+  <!-- Node 1 - Recon -->
+  <ellipse cx="100" cy="150" rx="60" ry="60" fill="url(#ng1)"/>
+  <circle cx="100" cy="150" r="35" stroke="#60A5FA" stroke-width="1.5" opacity="0.6"/>
+  <circle cx="100" cy="150" r="8" fill="#60A5FA" opacity="0.5"/>
+  <circle cx="100" cy="150" r="20" stroke="#60A5FA" stroke-width="0.5" stroke-dasharray="4 3" opacity="0.3"/>
+  <!-- Node 2 - Analysis -->
+  <ellipse cx="280" cy="150" rx="60" ry="60" fill="url(#ng2)"/>
+  <circle cx="280" cy="150" r="35" stroke="#FBBF24" stroke-width="1.5" opacity="0.6"/>
+  <circle cx="280" cy="150" r="8" fill="#FBBF24" opacity="0.5"/>
+  <path d="M265 160 L275 140 L285 155 L295 135" stroke="#FBBF24" stroke-width="1.2" opacity="0.5" stroke-linecap="round"/>
+  <!-- Node 3 - Exploit -->
+  <ellipse cx="440" cy="150" rx="60" ry="60" fill="url(#ng3)"/>
+  <circle cx="440" cy="150" r="35" stroke="#F87171" stroke-width="1.5" opacity="0.6"/>
+  <circle cx="440" cy="150" r="8" fill="#F87171" opacity="0.5"/>
+  <path d="M440 135 L440 165 M428 150 L452 150" stroke="#F87171" stroke-width="1.2" opacity="0.5" stroke-linecap="round"/>
+  <!-- Node 4 - Report -->
+  <ellipse cx="600" cy="150" rx="60" ry="60" fill="url(#ng4)"/>
+  <circle cx="600" cy="150" r="35" stroke="#4ADE80" stroke-width="1.5" opacity="0.6"/>
+  <circle cx="600" cy="150" r="8" fill="#4ADE80" opacity="0.5"/>
+  <path d="M590 140 L597 148 L612 133" stroke="#4ADE80" stroke-width="1.5" opacity="0.5" stroke-linecap="round"/>
+  <!-- Labels -->
+  <text x="100" y="210" text-anchor="middle" fill="#60A5FA" font-size="13" font-family="sans-serif" opacity="0.7">Recon</text>
+  <text x="280" y="210" text-anchor="middle" fill="#FBBF24" font-size="13" font-family="sans-serif" opacity="0.7">Analysis</text>
+  <text x="440" y="210" text-anchor="middle" fill="#F87171" font-size="13" font-family="sans-serif" opacity="0.7">Exploit</text>
+  <text x="600" y="210" text-anchor="middle" fill="#4ADE80" font-size="13" font-family="sans-serif" opacity="0.7">Report</text>
+  <!-- Data particles along flow -->
+  <circle cx="170" cy="148" r="1.5" fill="#60A5FA" opacity="0.5"/>
+  <circle cx="190" cy="152" r="1" fill="#60A5FA" opacity="0.4"/>
+  <circle cx="335" cy="147" r="1.5" fill="#FBBF24" opacity="0.5"/>
+  <circle cx="355" cy="153" r="1" fill="#FBBF24" opacity="0.4"/>
+  <circle cx="490" cy="149" r="1.5" fill="#F87171" opacity="0.5"/>
+  <circle cx="510" cy="151" r="1" fill="#F87171" opacity="0.4"/>
+</svg>
