@@ -122,41 +122,26 @@ pub async fn compose_down(app: &AppHandle) -> Result<String, String> {
     }
 }
 
-/// Wait for Temporal server to become healthy (up to 60 seconds)
-pub async fn wait_for_temporal(app: &AppHandle) -> Result<(), String> {
-    let docker = docker_path();
-    let compose_file = compose_file_path(app)?;
-
-    for attempt in 1..=12 {
+/// Wait for Temporal server to become healthy (up to 30 seconds)
+/// Uses direct TCP connection check instead of docker compose exec,
+/// since Temporal may be running from a different compose file.
+pub async fn wait_for_temporal(_app: &AppHandle) -> Result<(), String> {
+    for attempt in 1..=6 {
         log::info!(
-            "Waiting for Temporal to be healthy (attempt {}/12)...",
+            "Waiting for Temporal to be healthy (attempt {}/6)...",
             attempt
         );
 
-        let output = Command::new(&docker)
-            .args([
-                "compose",
-                "-f",
-                &compose_file,
-                "exec",
-                "temporal",
-                "temporal",
-                "operator",
-                "cluster",
-                "health",
-                "--address",
-                "localhost:7233",
-            ])
-            .output()
-            .await
-            .map_err(|e| format!("Health check command failed: {}", e))?;
-
-        if output.status.success() {
-            return Ok(());
+        match tokio::net::TcpStream::connect("127.0.0.1:7233").await {
+            Ok(_) => {
+                log::info!("Temporal is accepting connections on port 7233");
+                return Ok(());
+            }
+            Err(_) => {
+                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+            }
         }
-
-        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
     }
 
-    Err("Temporal did not become healthy within 60 seconds".to_string())
+    Err("Temporal did not become healthy within 30 seconds".to_string())
 }

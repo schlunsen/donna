@@ -83,8 +83,16 @@ fn get_dashboard_url(state: tauri::State<'_, AppState>) -> String {
 }
 
 pub fn run() {
+    // Initialize logging — writes to stderr (visible when launched from terminal)
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
+        .format_timestamp_secs()
+        .init();
+
+    log::info!("Donna desktop app starting...");
+
     // Pick a free port for the dashboard (fallback to 4321)
     let dashboard_port = portpicker::pick_unused_port().unwrap_or(4321);
+    log::info!("Dashboard will use port {}", dashboard_port);
 
     let app_state = AppState {
         dashboard_port,
