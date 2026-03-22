@@ -182,8 +182,8 @@ export const POST: APIRoute = async ({ params, url }) => {
     });
   }
 
-  if (!action || !['cancel', 'terminate', 'restart'].includes(action)) {
-    return new Response(JSON.stringify({ error: 'action must be "cancel", "terminate", or "restart"' }), {
+  if (!action || !['cancel', 'terminate', 'restart', 'start-new'].includes(action)) {
+    return new Response(JSON.stringify({ error: 'action must be "cancel", "terminate", "restart", or "start-new"' }), {
       status: 400,
       headers: { 'Content-Type': 'application/json' },
     });

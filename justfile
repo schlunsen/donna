@@ -133,7 +133,7 @@ restart-worker:
 
 # ─── Deploy (production) ───────────────────────────────────────────────────
 
-SERVER := env_var_or_default("DONNA_DEPLOY_SERVER", "root@your-server-ip")
+SERVER := env_var_or_default("DONNA_DEPLOY_SERVER", "root@78.46.219.157")
 REMOTE_DIR := "/opt/donna"
 
 # Deploy dashboard to production (production)

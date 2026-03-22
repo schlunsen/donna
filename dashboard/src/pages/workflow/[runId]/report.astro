@@ -8,8 +8,8 @@
 import Base from '../../../layouts/Base.astro';
 import { getVersion } from '../../../lib/version';
 import { getTemporalClient, getWorkflowProgress, type PipelineProgress } from '../../../lib/temporal.js';
-import { getSessionByWorkflowId, getFullFindings, getComprehensiveReport, computeFindingSummaryFromFiles } from '../../../lib/audit-logs.js';
-import type { SessionData, FullFinding, ComprehensiveReport } from '../../../lib/audit-logs.js';
+import { getSessionByWorkflowId, getFullFindings, getComprehensiveReport, computeFindingSummaryFromFiles, getDetailedFindings } from '../../../lib/audit-logs.js';
+import type { SessionData, FullFinding, ComprehensiveReport, DetailedFinding } from '../../../lib/audit-logs.js';
 import { marked } from 'marked';
 
 const donnaVersion = getVersion();
@@ -90,6 +90,60 @@ try {
 } catch (err) {
     loadError = err instanceof Error ? err.message : 'Failed to load workflow data';
 }
+
+// ── Parent Run Comparison ────────────────────────────────────────────────────
+// If this workflow was started from a parent, fetch parent findings for comparison
+
+let parentFindings: DetailedFinding[] = [];
+let parentWorkflowId: string | null = null;
+let parentRunIdValue: string | null = wfInput?.parentRunId || null;
+let hasParentComparison = false;
+
+// Build comparison data structures
+type ComparisonStatus = 'fixed' | 'still-present' | 'new';
+let findingComparison: Map<string, ComparisonStatus> = new Map();
+let fixedFindings: DetailedFinding[] = [];
+
+if (parentRunIdValue) {
+    try {
+        const client = await getTemporalClient();
+        // Find parent workflow by runId
+        for await (const w of client.workflow.list({ query: `RunId = "${parentRunIdValue}"` })) {
+            parentWorkflowId = w.workflowId;
+            break;
+        }
+        if (parentWorkflowId) {
+            parentFindings = await getDetailedFindings(parentWorkflowId);
+            hasParentComparison = parentFindings.length > 0;
+
+            if (hasParentComparison) {
+                // Build a key for each finding: category + normalized title + location
+                const makeKey = (f: DetailedFinding) =>
+                    `${f.category}::${f.title.toLowerCase().trim()}::${f.location.toLowerCase().trim()}`;
+
+                const parentKeys = new Set(parentFindings.map(makeKey));
+                const currentKeys = new Set(findings.map(makeKey));
+
+                // Current findings: mark as 'still-present' or 'new'
+                for (const f of findings) {
+                    const key = makeKey(f);
+                    findingComparison.set(f.id, parentKeys.has(key) ? 'still-present' : 'new');
+                }
+
+                // Parent findings not in current = fixed
+                fixedFindings = parentFindings.filter(f => !currentKeys.has(makeKey(f)));
+            }
+        }
+    } catch {
+        // Parent comparison is best-effort, don't block the report
+    }
+}
+
+const comparisonCounts = hasParentComparison ? {
+    fixed: fixedFindings.length,
+    stillPresent: [...findingComparison.values()].filter(s => s === 'still-present').length,
+    new: [...findingComparison.values()].filter(s => s === 'new').length,
+} : null;
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -302,6 +356,9 @@ const tocCategories = Object.entries(findingsByCategory).map(([cat, catFindings]
                     <ol class="toc-list">
                         <li><a href="#executive-summary">Executive Summary</a></li>
                         <li><a href="#severity-breakdown">Severity Breakdown</a></li>
+                        {hasParentComparison && (
+                            <li><a href="#comparison">Comparison with Previous Run</a></li>
+                        )}
                         {comprehensiveReport && comprehensiveReport.rootCauses.length > 0 && (
                             <li><a href="#root-cause">Root-Cause Correlation</a></li>
                         )}
@@ -400,6 +457,67 @@ const tocCategories = Object.entries(findingsByCategory).map(([cat, catFindings]
                 </section>
 
                 {/* ═══════════════════════════════════════════════════════════
+                    SECTION 4b: Comparison with Previous Run
+                    ═══════════════════════════════════════════════════════════ */}
+                {hasParentComparison && comparisonCounts && (
+                    <section class="report-section" id="comparison">
+                        <h2 class="report-section-title">Comparison with Previous Run</h2>
+                        <p class="section-intro">
+                            This scan was started from a previous run
+                            (<a href={`/workflow/${parentRunIdValue}`}><code>{parentRunIdValue?.substring(0, 8)}...</code></a>).
+                            Below is a comparison of findings between the two runs.
+                        </p>
+
+                        <div class="comparison-summary">
+                            <div class="comparison-stat fixed">
+                                <div class="comparison-stat-count">{comparisonCounts.fixed}</div>
+                                <div class="comparison-stat-label">Fixed</div>
+                                <div class="comparison-stat-desc">No longer detected</div>
+                            </div>
+                            <div class="comparison-stat still-present">
+                                <div class="comparison-stat-count">{comparisonCounts.stillPresent}</div>
+                                <div class="comparison-stat-label">Still Present</div>
+                                <div class="comparison-stat-desc">Found in both runs</div>
+                            </div>
+                            <div class="comparison-stat new">
+                                <div class="comparison-stat-count">{comparisonCounts.new}</div>
+                                <div class="comparison-stat-label">New</div>
+                                <div class="comparison-stat-desc">Not in previous run</div>
+                            </div>
+                        </div>
+
+                        {fixedFindings.length > 0 && (
+                            <div class="comparison-fixed-list">
+                                <h4>Resolved Findings</h4>
+                                <p class="section-intro">These findings from the previous run were not detected in this scan.</p>
+                                <table class="comparison-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Status</th>
+                                            <th>Severity</th>
+                                            <th>ID</th>
+                                            <th>Finding</th>
+                                            <th>Location</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {fixedFindings.map(f => (
+                                            <tr>
+                                                <td><span class="comparison-badge fixed">Fixed</span></td>
+                                                <td><span class={`sev-tag ${f.severity.toLowerCase()}`}>{f.severity}</span></td>
+                                                <td><code>{f.id}</code></td>
+                                                <td>{f.title}</td>
+                                                <td><code>{f.location.length > 40 ? f.location.substring(0, 40) + '...' : f.location}</code></td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                    </section>
+                )}
+
+                {/* ═══════════════════════════════════════════════════════════
                     SECTION 5: Root-Cause Correlation
                     ═══════════════════════════════════════════════════════════ */}
                 {comprehensiveReport && comprehensiveReport.rootCauses.length > 0 && (
@@ -455,6 +573,12 @@ const tocCategories = Object.entries(findingsByCategory).map(([cat, catFindings]
                                         <div class="finding-card-header-left">
                                             <span class={`sev-badge ${f.severity.toLowerCase()}`}>{f.severity}</span>
                                             <span class="finding-card-id">{f.id}</span>
+                                            {hasParentComparison && findingComparison.get(f.id) === 'still-present' && (
+                                                <span class="comparison-badge still-present" title="Also found in previous run">Still Present</span>
+                                            )}
+                                            {hasParentComparison && findingComparison.get(f.id) === 'new' && (
+                                                <span class="comparison-badge new" title="Not found in previous run">New</span>
+                                            )}
                                         </div>
                                         <a href="#toc" class="finding-toc-link">Table of Contents</a>
                                     </div>
@@ -1792,6 +1916,115 @@ const tocCategories = Object.entries(findingsByCategory).map(([cat, catFindings]
     }
 
     /* ═══════════════════════════════════════════════════════════════════════════
+       Comparison Section
+       ═══════════════════════════════════════════════════════════════════════════ */
+
+    .comparison-summary {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 1.5rem;
+        margin: 2rem 0;
+    }
+
+    .comparison-stat {
+        text-align: center;
+        padding: 1.5rem;
+        border-radius: 12px;
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+    }
+
+    .comparison-stat.fixed { border-left: 4px solid #22c55e; }
+    .comparison-stat.still-present { border-left: 4px solid #f59e0b; }
+    .comparison-stat.new { border-left: 4px solid #3b82f6; }
+
+    .comparison-stat-count {
+        font-size: 2.5rem;
+        font-weight: 700;
+        line-height: 1;
+    }
+
+    .comparison-stat.fixed .comparison-stat-count { color: #22c55e; }
+    .comparison-stat.still-present .comparison-stat-count { color: #f59e0b; }
+    .comparison-stat.new .comparison-stat-count { color: #3b82f6; }
+
+    .comparison-stat-label {
+        font-size: 0.9rem;
+        font-weight: 600;
+        margin-top: 0.5rem;
+        color: var(--text-primary);
+    }
+
+    .comparison-stat-desc {
+        font-size: 0.75rem;
+        color: var(--text-muted);
+        margin-top: 0.25rem;
+    }
+
+    .comparison-badge {
+        display: inline-block;
+        font-size: 0.65rem;
+        font-weight: 600;
+        padding: 0.15rem 0.5rem;
+        border-radius: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+    }
+
+    .comparison-badge.fixed {
+        background: rgba(34, 197, 94, 0.15);
+        color: #22c55e;
+        border: 1px solid rgba(34, 197, 94, 0.3);
+    }
+
+    .comparison-badge.still-present {
+        background: rgba(245, 158, 11, 0.15);
+        color: #f59e0b;
+        border: 1px solid rgba(245, 158, 11, 0.3);
+    }
+
+    .comparison-badge.new {
+        background: rgba(59, 130, 246, 0.15);
+        color: #3b82f6;
+        border: 1px solid rgba(59, 130, 246, 0.3);
+    }
+
+    .comparison-fixed-list {
+        margin-top: 2rem;
+    }
+
+    .comparison-fixed-list h4 {
+        font-size: 1.1rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .comparison-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 1rem;
+        font-size: 0.85rem;
+    }
+
+    .comparison-table th {
+        text-align: left;
+        padding: 0.6rem 0.75rem;
+        border-bottom: 2px solid var(--border);
+        color: var(--text-muted);
+        font-weight: 600;
+        font-size: 0.75rem;
+        text-transform: uppercase;
+    }
+
+    .comparison-table td {
+        padding: 0.6rem 0.75rem;
+        border-bottom: 1px solid var(--border);
+    }
+
+    .comparison-table tr:last-child td {
+        border-bottom: none;
+    }
+
+    /* ═══════════════════════════════════════════════════════════════════════════
        Responsive
        ═══════════════════════════════════════════════════════════════════════════ */
     @media (max-width: 768px) {
@@ -1801,6 +2034,7 @@ const tocCategories = Object.entries(findingsByCategory).map(([cat, catFindings]
         .report-cover-meta { gap: 1.5rem; }
         .finding-card { padding: 1.25rem; }
         .category-grid { grid-template-columns: 1fr; }
+        .comparison-summary { grid-template-columns: 1fr; }
         .report-nav { padding: 0.75rem 1rem; }
         .severity-row-label { width: 80px; font-size: 0.75rem; }
         .finding-meta-item { flex-direction: column; gap: 0.2rem; }

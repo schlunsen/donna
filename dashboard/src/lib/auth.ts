@@ -35,12 +35,15 @@ const ALLOWED_EMAILS = [
   ...(isTauriMode ? [DESKTOP_EMAIL] : []),
 ];
 
-// Validate BETTER_AUTH_SECRET on startup — sessions are insecure without it
-const authSecret = process.env.BETTER_AUTH_SECRET;
-if (!authSecret || authSecret.length < 32) {
-  const msg = !authSecret
+// Validate BETTER_AUTH_SECRET — sessions are insecure without it.
+// Skip validation during build/prerender: Astro sets ASTRO_BUILD=true, or we detect
+// the build via process.argv. The secret is only needed at runtime, not for static HTML.
+const isBuild = !!process.env.ASTRO_BUILD || process.argv.some((a) => a.includes('astro') && process.argv.includes('build'));
+const authSecret = process.env.BETTER_AUTH_SECRET || (isBuild ? 'build-placeholder-not-used-at-runtime' : '');
+if (!isBuild && (!authSecret || authSecret.length < 32)) {
+  const msg = !process.env.BETTER_AUTH_SECRET
     ? 'BETTER_AUTH_SECRET is not set. Session tokens cannot be signed securely.'
-    : `BETTER_AUTH_SECRET is too short (${authSecret.length} chars, minimum 32). Use a strong random secret.`;
+    : `BETTER_AUTH_SECRET is too short (${process.env.BETTER_AUTH_SECRET.length} chars, minimum 32). Use a strong random secret.`;
   console.error(`\n❌ SECURITY ERROR: ${msg}`);
   console.error('   Generate one with: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"\n');
   process.exit(1);

@@ -15,8 +15,8 @@ RUN npm ci
 # Copy source code
 COPY . .
 
-# Build the Astro SSR app
-RUN npm run build
+# Build the Astro SSR app (ASTRO_BUILD skips runtime-only checks like BETTER_AUTH_SECRET)
+RUN ASTRO_BUILD=true npm run build
 
 # ── Runtime stage ──────────────────────────────────────────────────────────────
 FROM node:22-slim
