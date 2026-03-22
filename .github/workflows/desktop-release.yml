@@ -79,6 +79,8 @@ jobs:
 
       - name: Build sidecars
         run: npm run tauri:build-sidecars
+        env:
+          TAURI_TARGET: ${{ matrix.target }}
 
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0

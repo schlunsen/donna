@@ -20,8 +20,13 @@ const ROOT = resolve(import.meta.dirname, "../..");
 const TAURI_DIR = resolve(import.meta.dirname, "..");
 const SIDECARS_DIR = join(TAURI_DIR, "sidecars");
 
-// Tauri expects sidecar binaries named with a platform triple suffix
+// Tauri expects sidecar binaries named with a platform triple suffix.
+// Allow override via TAURI_TARGET env var (set by CI for cross-compilation).
 function getPlatformTriple() {
+  if (process.env.TAURI_TARGET) {
+    return process.env.TAURI_TARGET;
+  }
+
   const p = platform();
   const a = arch();
 
@@ -177,10 +182,13 @@ function buildWorkerSidecar() {
   const outputPath = join(SIDECARS_DIR, outputName);
 
   // Use pkg to create a standalone binary
+  // Map the target triple back to pkg's platform/arch format
+  const pkgPlatform = platform() === "win32" ? "win" : platform() === "darwin" ? "macos" : "linux";
+  const pkgArch = arch() === "arm64" ? "arm64" : "x64";
   console.log("  Packaging with pkg...");
   run(
     `npx --yes @yao-pkg/pkg "${entryPoint}" ` +
-      `--target node22-${platform()}-${arch()} ` +
+      `--target node22-${pkgPlatform}-${pkgArch} ` +
       `--output "${outputPath}" ` +
       `--compress GZip`,
   );
