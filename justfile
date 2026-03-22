@@ -235,6 +235,29 @@ clone-repo url name:
 repos:
     @ls -1 repos/ 2>/dev/null || echo "No repos found. Clone one with: just clone-repo <url> <name>"
 
+# ─── Desktop App (Tauri) ──────────────────────────────────────────────────────
+
+# Setup Tauri development environment (installs Rust, Tauri CLI, dependencies)
+tauri-setup:
+    bash src-tauri/scripts/setup.sh
+
+# Run the desktop app in development mode
+tauri-dev:
+    npm run tauri:dev
+
+# Build the desktop app for distribution
+tauri-build:
+    npm run tauri:build-sidecars
+    npm run tauri:build
+
+# Build only sidecar binaries (dashboard + worker)
+tauri-sidecars:
+    npm run tauri:build-sidecars
+
+# Generate app icons from a source PNG (e.g., just tauri-icons assets/logo.png)
+tauri-icons source:
+    bash src-tauri/scripts/generate-icons.sh {{source}}
+
 # ─── Utilities ──────────────────────────────────────────────────────────────────
 
 # Create .env from example template
@@ -256,5 +279,7 @@ doctor:
     @command -v node >/dev/null 2>&1 && echo "✓ node $(node --version)" || echo "✗ node not found"
     @command -v npm >/dev/null 2>&1 && echo "✓ npm $(npm --version)" || echo "✗ npm not found"
     @command -v just >/dev/null 2>&1 && echo "✓ just $(just --version)" || echo "✗ just not found"
+    @command -v rustc >/dev/null 2>&1 && echo "✓ rustc $(rustc --version)" || echo "○ rustc not found (optional — needed for desktop app)"
+    @command -v cargo >/dev/null 2>&1 && cargo install --list 2>/dev/null | grep -q "tauri-cli" && echo "✓ tauri-cli installed" || echo "○ tauri-cli not found (optional — run: just tauri-setup)"
     @[ -f .env ] && echo "✓ .env file exists" || echo "✗ .env file missing (run: just setup)"
     @docker compose ps --format '{{{{.Name}} {{{{.Status}}' 2>/dev/null | head -5 || echo "  (no containers running)"

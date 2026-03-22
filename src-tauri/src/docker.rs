@@ -1,0 +1,131 @@
+use std::process::Command;
+use tauri::AppHandle;
+
+/// Path resolution for Docker on macOS GUI apps.
+/// GUI apps don't inherit the shell PATH, so Docker may not be found.
+fn docker_path() -> String {
+    // Try common Docker locations on macOS
+    let candidates = [
+        "/usr/local/bin/docker",
+        "/opt/homebrew/bin/docker",
+        "/usr/bin/docker",
+        "docker", // fallback to PATH
+    ];
+
+    for candidate in &candidates {
+        if std::path::Path::new(candidate).exists() || *candidate == "docker" {
+            return candidate.to_string();
+        }
+    }
+
+    "docker".to_string()
+}
+
+/// Resolve the docker-compose.yml path relative to the app's resource dir
+fn compose_file_path(app: &AppHandle) -> Result<String, String> {
+    // In development, use the project root docker-compose.yml
+    // In production, it's bundled as a resource
+    let resource_dir = app
+        .path()
+        .resource_dir()
+        .map_err(|e| format!("Failed to get resource dir: {}", e))?;
+
+    // Use the Tauri-specific compose file (only Temporal, no dashboard/worker containers)
+    let compose_path = resource_dir.join("docker-compose.tauri.yml");
+
+    if compose_path.exists() {
+        Ok(compose_path.to_string_lossy().to_string())
+    } else {
+        // Fallback: try the app's working directory
+        Ok("docker-compose.yml".to_string())
+    }
+}
+
+/// Check if Docker daemon is available
+pub async fn is_docker_available() -> Result<bool, String> {
+    let docker = docker_path();
+
+    let output = Command::new(&docker)
+        .args(["info", "--format", "{{.ServerVersion}}"])
+        .output()
+        .map_err(|e| format!("Failed to run docker: {}", e))?;
+
+    Ok(output.status.success())
+}
+
+/// Start Docker Compose services (Temporal server)
+pub async fn compose_up(app: &AppHandle) -> Result<String, String> {
+    let docker = docker_path();
+    let compose_file = compose_file_path(app)?;
+
+    log::info!("Starting Docker Compose with file: {}", compose_file);
+
+    let output = Command::new(&docker)
+        .args([
+            "compose",
+            "-f",
+            &compose_file,
+            "up",
+            "-d",
+            "temporal", // Only start Temporal — dashboard and worker run as sidecars
+        ])
+        .output()
+        .map_err(|e| format!("Failed to run docker compose up: {}", e))?;
+
+    if output.status.success() {
+        Ok("Docker Compose started".to_string())
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        Err(format!("Docker Compose failed: {}", stderr))
+    }
+}
+
+/// Stop Docker Compose services
+pub async fn compose_down(app: &AppHandle) -> Result<String, String> {
+    let docker = docker_path();
+    let compose_file = compose_file_path(app)?;
+
+    let output = Command::new(&docker)
+        .args(["compose", "-f", &compose_file, "down"])
+        .output()
+        .map_err(|e| format!("Failed to run docker compose down: {}", e))?;
+
+    if output.status.success() {
+        Ok("Docker Compose stopped".to_string())
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        Err(format!("Docker Compose down failed: {}", stderr))
+    }
+}
+
+/// Wait for Temporal server to become healthy (up to 60 seconds)
+pub async fn wait_for_temporal(_app: &AppHandle) -> Result<(), String> {
+    let docker = docker_path();
+
+    for attempt in 1..=12 {
+        log::info!("Waiting for Temporal to be healthy (attempt {}/12)...", attempt);
+
+        let output = Command::new(&docker)
+            .args([
+                "compose",
+                "exec",
+                "temporal",
+                "temporal",
+                "operator",
+                "cluster",
+                "health",
+                "--address",
+                "localhost:7233",
+            ])
+            .output()
+            .map_err(|e| format!("Health check command failed: {}", e))?;
+
+        if output.status.success() {
+            return Ok(());
+        }
+
+        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+    }
+
+    Err("Temporal did not become healthy within 60 seconds".to_string())
+}

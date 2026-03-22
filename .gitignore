@@ -9,3 +9,11 @@ repos/
 deliverables/
 dashboard/data/
 generate-graphics.py
+
+# Tauri
+src-tauri/target/
+src-tauri/sidecars/
+src-tauri/icons/*.png
+src-tauri/icons/*.ico
+src-tauri/icons/*.icns
+!src-tauri/icons/.gitkeep

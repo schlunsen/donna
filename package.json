@@ -12,7 +12,12 @@
     "sentinel:start": "node dist/temporal/continuous-client.js",
     "sentinel:stop": "node dist/temporal/continuous-client.js --stop",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "tauri": "cargo tauri",
+    "tauri:dev": "cargo tauri dev",
+    "tauri:build": "cargo tauri build",
+    "tauri:build-sidecars": "node src-tauri/scripts/build-sidecars.mjs",
+    "tauri:setup": "bash src-tauri/scripts/setup.sh"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.38",

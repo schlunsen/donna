@@ -1,0 +1,77 @@
+{
+  "$schema": "https://raw.githubusercontent.com/tauri-apps/tauri/dev/crates/tauri-cli/config.schema.json",
+  "productName": "Donna",
+  "identifier": "com.donna.desktop",
+  "version": "1.0.0",
+  "build": {
+    "beforeBuildCommand": "npm run tauri:build-sidecars",
+    "beforeDevCommand": "",
+    "frontendDist": "../dashboard/dist/client"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "title": "Donna — AI Pentesting",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 900,
+        "minHeight": 600,
+        "center": true,
+        "decorations": true,
+        "resizable": true,
+        "visible": false
+      }
+    ],
+    "trayIcon": {
+      "id": "donna-tray",
+      "iconPath": "icons/tray-icon.png",
+      "iconAsTemplate": true,
+      "tooltip": "Donna — AI Pentesting"
+    },
+    "security": {
+      "csp": "default-src 'self'; connect-src 'self' http://localhost:* ws://localhost:*; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "targets": "all",
+    "externalBin": [
+      "sidecars/donna-dashboard",
+      "sidecars/donna-worker"
+    ],
+    "macOS": {
+      "minimumSystemVersion": "10.15",
+      "signingIdentity": null,
+      "entitlements": null
+    },
+    "windows": {
+      "wix": {
+        "language": "en-US"
+      }
+    },
+    "linux": {
+      "deb": {
+        "depends": ["libwebkit2gtk-4.1-0", "libgtk-3-0"]
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "",
+      "endpoints": []
+    },
+    "deep-link": {
+      "desktop": {
+        "schemes": ["donna"]
+      }
+    }
+  }
+}

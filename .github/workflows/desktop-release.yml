@@ -1,0 +1,110 @@
+name: Desktop Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            target: aarch64-apple-darwin
+            label: macOS (Apple Silicon)
+          - platform: macos-13
+            target: x86_64-apple-darwin
+            label: macOS (Intel)
+          - platform: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            label: Linux (x86_64)
+          - platform: windows-latest
+            target: x86_64-pc-windows-msvc
+            label: Windows (x86_64)
+
+    name: Build — ${{ matrix.label }}
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+
+      # Linux-specific dependencies
+      - name: Install Linux dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev
+
+      - name: Install Node.js dependencies
+        run: |
+          npm ci
+          cd dashboard && npm ci
+
+      - name: Build sidecars
+        run: npm run tauri:build-sidecars
+
+      - name: Build Tauri app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # macOS code signing (optional — set these secrets for signed builds)
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: "Donna ${{ github.ref_name }}"
+          releaseBody: |
+            ## Donna Desktop ${{ github.ref_name }}
+
+            Download the appropriate installer for your platform:
+            - **macOS (Apple Silicon)**: `.dmg` file for M1/M2/M3 Macs
+            - **macOS (Intel)**: `.dmg` file for Intel Macs
+            - **Windows**: `.msi` installer
+            - **Linux**: `.AppImage` or `.deb` package
+
+            ### Prerequisites
+            - [Docker Desktop](https://www.docker.com/products/docker-desktop) must be installed
+            - An Anthropic API key (entered on first launch)
+
+            ### What's New
+            See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md)
+          releaseDraft: true
+          prerelease: false
+          args: --target ${{ matrix.target }}

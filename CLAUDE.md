@@ -98,6 +98,13 @@ just import <path> [name]     # Import a local directory into ./repos/
 just clone-repo <url> <name>  # Clone a repo into ./repos/
 just repos                    # List available repos
 
+# ── Desktop App (Tauri) ──
+just tauri-setup        # Install Rust, Tauri CLI, and all dependencies
+just tauri-dev          # Run the desktop app in development mode
+just tauri-build        # Build sidecars + desktop app for distribution
+just tauri-sidecars     # Build only sidecar binaries
+just tauri-icons <src>  # Generate app icons from a source PNG
+
 # ── Utilities ──
 just setup              # Create .env from template
 just doctor             # Check if required tools are installed
@@ -106,6 +113,18 @@ just dashboard-ui       # Open Donna Dashboard in browser
 ```
 
 ## Architecture
+
+### Desktop App (Tauri v2)
+- `src-tauri/` — Tauri v2 Rust shell (thin glue layer)
+  - `src/lib.rs` — App setup, startup orchestration, Tauri commands
+  - `src/docker.rs` — Docker Compose lifecycle (compose up/down, health checks)
+  - `src/sidecar.rs` — Sidecar process management (dashboard + worker)
+  - `src/tray.rs` — System tray with dynamic status icons
+  - `capabilities/default.json` — Security permissions for shell, notifications, etc.
+  - `scripts/build-sidecars.mjs` — Packages dashboard + worker as standalone Node.js binaries
+  - `docker-compose.tauri.yml` — Minimal compose (Temporal only, sidecars run natively)
+- Sidecars: dashboard (Astro SSR) and worker (Temporal + Claude Agent SDK) packaged via `@yao-pkg/pkg`
+- Docker still required for Temporal server and security tools
 
 ### Core Modules
 - `src/session-manager.ts` — Agent definitions (`AGENTS` record). Agent types in `src/types/agents.ts`
