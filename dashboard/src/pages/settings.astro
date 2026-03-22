@@ -1,0 +1,244 @@
+---
+// Donna - Continuous AI Pentesting Platform
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License version 3
+// as published by the Free Software Foundation.
+
+import Base from '../layouts/Base.astro';
+import Sidebar from '../components/Sidebar.astro';
+import { getVersion } from '../lib/version';
+
+const donnaVersion = getVersion();
+
+const session = (Astro.locals as any).session;
+const user = session?.user;
+---
+
+<Base title="Settings — Donna Dashboard">
+    <div class="app-shell">
+        <Sidebar activePage="settings" />
+
+        <header class="topbar">
+            <div class="topbar-left">
+                <button class="mobile-menu-btn" id="mobileMenuBtn" aria-label="Open menu">☰</button>
+                <div class="topbar-breadcrumb">
+                    <span style="color: var(--text-dim);">default</span>
+                    <span class="topbar-breadcrumb-sep">/</span>
+                    <span style="color: var(--white); font-weight: 600;">Settings</span>
+                </div>
+            </div>
+            <div class="topbar-right">
+                <span class="version-badge">v{donnaVersion}</span>
+            </div>
+        </header>
+
+        <main class="main-content">
+            <div class="page-container">
+                <div class="page-header">
+                    <div class="page-header-left">
+                        <div>
+                            <h1 class="page-title">
+                                <span class="gradient-text">Settings</span>
+                            </h1>
+                            <p class="page-subtitle">Manage your account</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Account Info -->
+                <div class="settings-section">
+                    <h2 class="settings-section-title">Account</h2>
+                    <div class="settings-card">
+                        <div class="settings-row">
+                            <span class="settings-label">Email</span>
+                            <span class="settings-value">{user?.email || '—'}</span>
+                        </div>
+                        <div class="settings-row">
+                            <span class="settings-label">Name</span>
+                            <span class="settings-value">{user?.name || '—'}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Change Password -->
+                <div class="settings-section">
+                    <h2 class="settings-section-title">Change Password</h2>
+                    <div class="settings-card">
+                        <form id="passwordForm" class="password-form">
+                            <div class="form-group">
+                                <label class="form-label" for="currentPassword">Current Password</label>
+                                <input type="password" id="currentPassword" class="form-input" required autocomplete="current-password" />
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="newPassword">New Password</label>
+                                <input type="password" id="newPassword" class="form-input" required minlength="6" autocomplete="new-password" />
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="confirmPassword">Confirm New Password</label>
+                                <input type="password" id="confirmPassword" class="form-input" required minlength="6" autocomplete="new-password" />
+                            </div>
+                            <div id="pwError" class="settings-error" style="display: none;"></div>
+                            <div id="pwSuccess" class="settings-success" style="display: none;"></div>
+                            <button type="submit" class="btn btn-primary" id="pwSubmit">
+                                <span id="pwLabel">Update Password</span>
+                                <span id="pwSpinner" style="display: none;">Updating…</span>
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script is:inline>
+        const form = document.getElementById('passwordForm');
+        const errorEl = document.getElementById('pwError');
+        const successEl = document.getElementById('pwSuccess');
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            errorEl.style.display = 'none';
+            successEl.style.display = 'none';
+
+            const currentPassword = document.getElementById('currentPassword').value;
+            const newPassword = document.getElementById('newPassword').value;
+            const confirmPassword = document.getElementById('confirmPassword').value;
+
+            if (newPassword !== confirmPassword) {
+                errorEl.textContent = 'New passwords do not match.';
+                errorEl.style.display = 'block';
+                return;
+            }
+
+            if (newPassword.length < 6) {
+                errorEl.textContent = 'Password must be at least 6 characters.';
+                errorEl.style.display = 'block';
+                return;
+            }
+
+            const btn = document.getElementById('pwSubmit');
+            const label = document.getElementById('pwLabel');
+            const spinner = document.getElementById('pwSpinner');
+            btn.disabled = true;
+            label.style.display = 'none';
+            spinner.style.display = '';
+
+            try {
+                const res = await fetch('/api/auth/change-password', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ currentPassword, newPassword }),
+                });
+
+                if (!res.ok) {
+                    const data = await res.json().catch(() => ({}));
+                    throw new Error(data.message || 'Failed to update password');
+                }
+
+                successEl.textContent = 'Password updated successfully!';
+                successEl.style.display = 'block';
+                form.reset();
+            } catch (err) {
+                errorEl.textContent = err.message || 'Failed to update password';
+                errorEl.style.display = 'block';
+            } finally {
+                btn.disabled = false;
+                label.style.display = '';
+                spinner.style.display = 'none';
+            }
+        });
+    </script>
+</Base>
+
+<style is:global>
+    .settings-section {
+        margin-bottom: 2rem;
+    }
+
+    .settings-section-title {
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: var(--white);
+        margin-bottom: 0.75rem;
+    }
+
+    .settings-card {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        padding: 1.5rem;
+    }
+
+    .settings-row {
+        display: flex;
+        align-items: center;
+        padding: 0.5rem 0;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+    }
+
+    .settings-row:last-child {
+        border-bottom: none;
+    }
+
+    .settings-label {
+        font-size: 0.8rem;
+        color: var(--text-dim);
+        width: 120px;
+        flex-shrink: 0;
+    }
+
+    .settings-value {
+        font-size: 0.8rem;
+        color: var(--text);
+        font-family: var(--font-mono);
+    }
+
+    .password-form {
+        max-width: 400px;
+    }
+
+    .password-form .form-group {
+        margin-bottom: 1rem;
+    }
+
+    .settings-error {
+        background: var(--error-bg);
+        border: 1px solid var(--error-border);
+        color: var(--error);
+        font-size: 0.8rem;
+        padding: 0.6rem 0.85rem;
+        border-radius: var(--radius);
+        margin-bottom: 1rem;
+    }
+
+    .settings-success {
+        background: var(--success-bg);
+        border: 1px solid var(--success-border);
+        color: var(--success);
+        font-size: 0.8rem;
+        padding: 0.6rem 0.85rem;
+        border-radius: var(--radius);
+        margin-bottom: 1rem;
+    }
+
+    @media (max-width: 768px) {
+        .settings-card {
+            padding: 1rem;
+        }
+
+        .settings-row {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 0.25rem;
+        }
+
+        .settings-label {
+            width: auto;
+        }
+
+        .password-form {
+            max-width: none;
+        }
+    }
+</style>

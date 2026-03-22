@@ -1,0 +1,111 @@
+services:
+  temporal:
+    image: temporalio/temporal:latest
+    command: ["server", "start-dev", "--db-filename", "/home/temporal/temporal.db", "--ip", "0.0.0.0"]
+    ports:
+      - "127.0.0.1:7233:7233"   # gRPC
+      - "127.0.0.1:8233:8233"   # Web UI (built-in)
+    volumes:
+      - temporal-data:/home/temporal
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "temporal", "operator", "cluster", "health", "--address", "localhost:7233"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  worker:
+    build: .
+    entrypoint: ["node", "dist/temporal/worker.js"]
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL:-}  # Optional: route through claude-code-router
+      - ANTHROPIC_AUTH_TOKEN=${ANTHROPIC_AUTH_TOKEN:-}  # Auth token for router
+      - ROUTER_DEFAULT=${ROUTER_DEFAULT:-}  # Model name when using router (e.g., "gemini,gemini-2.5-pro")
+      - CLAUDE_CODE_OAUTH_TOKEN=${CLAUDE_CODE_OAUTH_TOKEN:-}
+      - CLAUDE_CODE_USE_BEDROCK=${CLAUDE_CODE_USE_BEDROCK:-}
+      - AWS_REGION=${AWS_REGION:-}
+      - AWS_BEARER_TOKEN_BEDROCK=${AWS_BEARER_TOKEN_BEDROCK:-}
+      - CLAUDE_CODE_USE_VERTEX=${CLAUDE_CODE_USE_VERTEX:-}
+      - CLOUD_ML_REGION=${CLOUD_ML_REGION:-}
+      - ANTHROPIC_VERTEX_PROJECT_ID=${ANTHROPIC_VERTEX_PROJECT_ID:-}
+      - GOOGLE_APPLICATION_CREDENTIALS=${GOOGLE_APPLICATION_CREDENTIALS:-}
+      - ANTHROPIC_SMALL_MODEL=${ANTHROPIC_SMALL_MODEL:-}
+      - ANTHROPIC_MEDIUM_MODEL=${ANTHROPIC_MEDIUM_MODEL:-}
+      - ANTHROPIC_LARGE_MODEL=${ANTHROPIC_LARGE_MODEL:-}
+      - CLAUDE_CODE_MAX_OUTPUT_TOKENS=${CLAUDE_CODE_MAX_OUTPUT_TOKENS:-64000}
+    depends_on:
+      temporal:
+        condition: service_healthy
+    volumes:
+      - ./configs:/app/configs
+      - ./prompts:/app/prompts
+      - ./audit-logs:/app/audit-logs
+      - ${OUTPUT_DIR:-./audit-logs}:/app/output
+      - ./credentials:/app/credentials:ro
+      - ./repos:/repos
+      - ${BENCHMARKS_BASE:-.}:/benchmarks
+      - ${CLAUDE_CONFIG_DIR:-/root/.claude}:/tmp/.claude:ro
+    restart: unless-stopped
+    shm_size: 2gb
+    # Note: seccomp:unconfined was removed for security hardening.
+    # Chromium in Docker may need --no-sandbox flag via PLAYWRIGHT env vars if issues arise.
+
+  # Donna Dashboard — custom web UI replacing Temporal's built-in UI
+  dashboard:
+    build:
+      context: ./dashboard
+    ports:
+      - "127.0.0.1:4321:4321"   # Dashboard UI
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+      - AUDIT_LOGS_DIR=/app/audit-logs
+      # Auth configuration
+      - AUTH_DB_DIR=/app/data
+      - AUTH_BASE_URL=${AUTH_BASE_URL:-http://localhost:4321}
+      - AUTH_TRUSTED_ORIGINS=${AUTH_TRUSTED_ORIGINS:-http://localhost:4321}
+      - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:-}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
+    depends_on:
+      temporal:
+        condition: service_healthy
+    volumes:
+      - ./audit-logs:/app/audit-logs:ro
+      - ./version.json:/app/version.json:ro
+      - dashboard-data:/app/data
+    restart: unless-stopped
+
+  # Optional: claude-code-router for multi-model support
+  # Start with: ROUTER=true ./donna start ...
+  router:
+    image: node:20-slim
+    profiles: ["router"]  # Only starts when explicitly requested
+    command: >
+      sh -c "apt-get update && apt-get install -y gettext-base &&
+             npm install -g @musistudio/claude-code-router &&
+             mkdir -p /root/.claude-code-router &&
+             envsubst < /config/router-config.json > /root/.claude-code-router/config.json &&
+             ccr start"
+    ports:
+      - "127.0.0.1:3456:3456"
+    volumes:
+      - ./configs/router-config.json:/config/router-config.json:ro
+    environment:
+      - HOST=0.0.0.0
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      - ROUTER_DEFAULT=${ROUTER_DEFAULT:-openai,gpt-4o}
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3456/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+volumes:
+  temporal-data:
+  dashboard-data:

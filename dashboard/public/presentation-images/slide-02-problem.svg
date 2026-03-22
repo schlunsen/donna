@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" fill="none">
+  <defs>
+    <radialGradient id="dangerglow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#EF4444" stop-opacity="0.15"/>
+      <stop offset="100%" stop-color="#0a0a14" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <ellipse cx="200" cy="200" rx="180" ry="180" fill="url(#dangerglow)"/>
+  <!-- Cracked shield -->
+  <path d="M200 40 L320 100 L320 210 C320 280 200 330 200 330 C200 330 80 280 80 210 L80 100 Z"
+        stroke="#F87171" stroke-width="2" stroke-dasharray="12 6" opacity="0.4"/>
+  <!-- Major crack -->
+  <path d="M190 80 L200 140 L175 170 L195 220 L180 280 L200 330"
+        stroke="#EF4444" stroke-width="2" opacity="0.7" stroke-linecap="round"/>
+  <!-- Secondary cracks -->
+  <path d="M200 140 L230 155 L240 190" stroke="#EF4444" stroke-width="1.2" opacity="0.5" stroke-linecap="round"/>
+  <path d="M175 170 L150 185 L140 210" stroke="#EF4444" stroke-width="1.2" opacity="0.5" stroke-linecap="round"/>
+  <path d="M195 220 L225 235 L250 230" stroke="#EF4444" stroke-width="1" opacity="0.4" stroke-linecap="round"/>
+  <!-- Fragment lines -->
+  <path d="M120 120 L105 105" stroke="#F87171" stroke-width="0.8" opacity="0.3"/>
+  <path d="M280 120 L295 105" stroke="#F87171" stroke-width="0.8" opacity="0.3"/>
+  <path d="M310 180 L340 175" stroke="#F87171" stroke-width="0.8" opacity="0.3"/>
+  <path d="M90 180 L60 175" stroke="#F87171" stroke-width="0.8" opacity="0.3"/>
+  <!-- Warning triangles -->
+  <g opacity="0.6" transform="translate(140, 110)">
+    <polygon points="15,0 30,26 0,26" stroke="#FBBF24" stroke-width="1.5" fill="none"/>
+    <text x="15" y="22" text-anchor="middle" fill="#FBBF24" font-size="16" font-weight="bold">!</text>
+  </g>
+  <g opacity="0.45" transform="translate(235, 130)">
+    <polygon points="12,0 24,20 0,20" stroke="#FBBF24" stroke-width="1.2" fill="none"/>
+    <text x="12" y="17" text-anchor="middle" fill="#FBBF24" font-size="13" font-weight="bold">!</text>
+  </g>
+  <g opacity="0.35" transform="translate(110, 230)">
+    <polygon points="10,0 20,17 0,17" stroke="#FBBF24" stroke-width="1" fill="none"/>
+    <text x="10" y="14" text-anchor="middle" fill="#FBBF24" font-size="11" font-weight="bold">!</text>
+  </g>
+  <!-- Floating debris dots -->
+  <circle cx="100" cy="90" r="2" fill="#F87171" opacity="0.3"/>
+  <circle cx="310" cy="100" r="2.5" fill="#F87171" opacity="0.3"/>
+  <circle cx="330" cy="250" r="2" fill="#F87171" opacity="0.25"/>
+  <circle cx="70" cy="260" r="2.5" fill="#F87171" opacity="0.25"/>
+  <circle cx="255" cy="80" r="1.5" fill="#EF4444" opacity="0.35"/>
+  <circle cx="145" cy="310" r="1.5" fill="#EF4444" opacity="0.3"/>
+</svg>

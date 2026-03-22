@@ -1,0 +1,102 @@
+// Donna - Continuous AI Pentesting Platform
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License version 3
+// as published by the Free Software Foundation.
+
+/**
+ * Better Auth — server-side configuration
+ *
+ * Uses SQLite for zero-dependency persistence.
+ * Supports email/password + Google OAuth.
+ */
+
+import { betterAuth } from 'better-auth';
+import Database from 'better-sqlite3';
+import path from 'node:path';
+import fs from 'node:fs';
+
+// Store the DB in a persistent location (Docker volume or local)
+const dataDir = process.env.AUTH_DB_DIR || path.join(process.cwd(), 'data');
+fs.mkdirSync(dataDir, { recursive: true });
+const dbPath = path.join(dataDir, 'auth.db');
+
+// Allowed emails for Google OAuth sign-up (comma-separated env var or hardcoded defaults)
+// Only these emails can create accounts via Google. Existing accounts can always sign in.
+const ALLOWED_EMAILS = process.env.AUTH_ALLOWED_EMAILS
+  ? process.env.AUTH_ALLOWED_EMAILS.split(',').map((e) => e.trim().toLowerCase())
+  : [];
+
+// Validate BETTER_AUTH_SECRET on startup — sessions are insecure without it
+const authSecret = process.env.BETTER_AUTH_SECRET;
+if (!authSecret || authSecret.length < 32) {
+  const msg = !authSecret
+    ? 'BETTER_AUTH_SECRET is not set. Session tokens cannot be signed securely.'
+    : `BETTER_AUTH_SECRET is too short (${authSecret.length} chars, minimum 32). Use a strong random secret.`;
+  console.error(`\n❌ SECURITY ERROR: ${msg}`);
+  console.error('   Generate one with: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"\n');
+  process.exit(1);
+}
+
+export const auth = betterAuth({
+  database: new Database(dbPath),
+
+  // Secret for signing session tokens (HMAC). Validated above.
+  secret: authSecret,
+
+  // Base path prefix (for reverse proxy sub-path deployments like /donna)
+  basePath: process.env.AUTH_BASE_PATH || '/api/auth',
+
+  // Base URL for auth callbacks (must match your deployment domain)
+  baseURL: process.env.AUTH_BASE_URL || 'http://localhost:4321',
+
+  // Email + password authentication (disabled — Google OAuth only)
+  emailAndPassword: {
+    enabled: false,
+  },
+
+  // Google OAuth (optional — only enabled when env vars are set)
+  socialProviders: {
+    ...(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET
+      ? {
+          google: {
+            clientId: process.env.GOOGLE_CLIENT_ID,
+            clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+          },
+        }
+      : {}),
+  },
+
+  // Session configuration
+  session: {
+    expiresIn: 60 * 60 * 24 * 7, // 7 days
+    updateAge: 60 * 60 * 24,      // refresh session every 24h
+    cookieCache: {
+      enabled: true,
+      maxAge: 60 * 5, // 5 minutes
+    },
+  },
+
+  // Trust proxy headers (behind Caddy/nginx)
+  trustedOrigins: process.env.AUTH_TRUSTED_ORIGINS
+    ? process.env.AUTH_TRUSTED_ORIGINS.split(',')
+    : ['http://localhost:4321'],
+
+  // Hook: restrict sign-ups to allowed emails only
+  databaseHooks: {
+    user: {
+      create: {
+        before: async (user) => {
+          const email = (user.email || '').toLowerCase();
+          if (!ALLOWED_EMAILS.includes(email)) {
+            // Reject — this email is not in the allowlist
+            return false;
+          }
+          return user;
+        },
+      },
+    },
+  },
+});
+
+export type Session = typeof auth.$Infer.Session;

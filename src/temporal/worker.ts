@@ -1,0 +1,85 @@
+#!/usr/bin/env node
+// Donna - Continuous AI Pentesting Platform
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License version 3
+// as published by the Free Software Foundation.
+
+/**
+ * Temporal worker for Donna pentest pipeline.
+ *
+ * Polls the 'donna-pipeline' task queue and executes activities.
+ * Handles up to 25 concurrent activities to support multiple parallel workflows.
+ *
+ * Usage:
+ *   npm run temporal:worker
+ *   # or
+ *   node dist/temporal/worker.js
+ *
+ * Environment:
+ *   TEMPORAL_ADDRESS - Temporal server address (default: localhost:7233)
+ */
+
+import { NativeConnection, Worker, bundleWorkflowCode } from '@temporalio/worker';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
+import dotenv from 'dotenv';
+import * as activities from './activities.js';
+import * as continuousActivities from './continuous-activities.js';
+import { getBrowserPool } from '../services/browser-pool.js';
+
+dotenv.config();
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+async function runWorker(): Promise<void> {
+  const address = process.env.TEMPORAL_ADDRESS || 'localhost:7233';
+  console.log(`Connecting to Temporal at ${address}...`);
+
+  const connection = await NativeConnection.connect({ address });
+
+  // Bundle workflows for Temporal's V8 isolate
+  console.log('Bundling workflows...');
+  const workflowBundle = await bundleWorkflowCode({
+    workflowsPath: path.join(__dirname, 'workflows.js'),
+    ignoreModules: ['crypto', 'fs/promises', 'path'],
+  });
+
+  const worker = await Worker.create({
+    connection,
+    namespace: 'default',
+    workflowBundle,
+    activities: { ...activities, ...continuousActivities },
+    taskQueue: 'donna-pipeline',
+    maxConcurrentActivityTaskExecutions: 25, // Support multiple parallel workflows (5 agents × ~5 workflows)
+  });
+
+  // Initialize browser pool with cleanup handlers (registers SIGINT/SIGTERM cleanup)
+  const browserPool = getBrowserPool();
+
+  // Graceful shutdown handling
+  const shutdown = async (): Promise<void> => {
+    console.log('\nShutting down worker...');
+    browserPool.cleanup();
+    worker.shutdown();
+  };
+
+  process.on('SIGINT', shutdown);
+  process.on('SIGTERM', shutdown);
+
+  console.log('Donna worker started');
+  console.log('Task queue: donna-pipeline');
+  console.log('Press Ctrl+C to stop\n');
+
+  try {
+    await worker.run();
+  } finally {
+    await connection.close();
+    console.log('Worker stopped');
+  }
+}
+
+runWorker().catch((err) => {
+  console.error('Worker failed:', err);
+  process.exit(1);
+});

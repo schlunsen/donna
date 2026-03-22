@@ -1,0 +1,41 @@
+{
+  "name": "donna",
+  "version": "1.0.0",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "temporal:server": "docker compose -f docker/docker-compose.temporal.yml up temporal -d",
+    "temporal:server:stop": "docker compose -f docker/docker-compose.temporal.yml down",
+    "temporal:worker": "node dist/temporal/worker.js",
+    "temporal:start": "node dist/temporal/client.js",
+    "sentinel:start": "node dist/temporal/continuous-client.js",
+    "sentinel:stop": "node dist/temporal/continuous-client.js --stop",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.2.38",
+    "@temporalio/activity": "^1.11.0",
+    "@temporalio/client": "^1.11.0",
+    "@temporalio/worker": "^1.11.0",
+    "@temporalio/workflow": "^1.11.0",
+    "ajv": "^8.12.0",
+    "ajv-formats": "^2.1.1",
+    "boxen": "^8.0.1",
+    "chalk": "^5.0.0",
+    "dotenv": "^16.4.5",
+    "figlet": "^1.9.3",
+    "gradient-string": "^3.0.0",
+    "js-yaml": "^4.1.0",
+    "proper-lockfile": "^4.1.2",
+    "zx": "^8.0.0"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^25.0.3",
+    "@types/proper-lockfile": "^4.1.4",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.0"
+  }
+}

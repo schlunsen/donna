@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" fill="none">
+  <defs>
+    <radialGradient id="victoryGlow" cx="50%" cy="45%" r="50%">
+      <stop offset="0%" stop-color="#4ADE80" stop-opacity="0.15"/>
+      <stop offset="40%" stop-color="#7B2D8E" stop-opacity="0.1"/>
+      <stop offset="100%" stop-color="#0a0a14" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="shieldFill" cx="50%" cy="45%" r="50%">
+      <stop offset="0%" stop-color="#7B2D8E" stop-opacity="0.15"/>
+      <stop offset="100%" stop-color="#0a0a14" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <!-- Background glow -->
+  <ellipse cx="200" cy="190" rx="190" ry="190" fill="url(#victoryGlow)"/>
+  <!-- Shield - solid and strong -->
+  <path d="M200 40 L330 105 L330 220 C330 290 200 345 200 345 C200 345 70 290 70 220 L70 105 Z"
+        stroke="#7B2D8E" stroke-width="2.5" opacity="0.8" fill="url(#shieldFill)"/>
+  <path d="M200 55 L320 115 L320 215 C320 280 200 330 200 330 C200 330 80 280 80 215 L80 115 Z"
+        stroke="#C090C0" stroke-width="1" opacity="0.35"/>
+  <!-- Big checkmark -->
+  <path d="M155 190 L185 220 L250 150" stroke="#4ADE80" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" opacity="0.8"/>
+  <!-- Energy rings around shield -->
+  <ellipse cx="200" cy="200" rx="170" ry="175" stroke="#7B2D8E" stroke-width="0.8" opacity="0.2" stroke-dasharray="6 8"/>
+  <ellipse cx="200" cy="200" rx="185" ry="190" stroke="#C090C0" stroke-width="0.5" opacity="0.15" stroke-dasharray="4 10"/>
+  <!-- Radiating lines (success burst) -->
+  <line x1="200" y1="30" x2="200" y2="10" stroke="#4ADE80" stroke-width="1" opacity="0.3"/>
+  <line x1="340" y1="100" x2="355" y2="88" stroke="#4ADE80" stroke-width="1" opacity="0.25"/>
+  <line x1="60" y1="100" x2="45" y2="88" stroke="#4ADE80" stroke-width="1" opacity="0.25"/>
+  <line x1="350" y1="220" x2="370" y2="225" stroke="#4ADE80" stroke-width="1" opacity="0.2"/>
+  <line x1="50" y1="220" x2="30" y2="225" stroke="#4ADE80" stroke-width="1" opacity="0.2"/>
+  <!-- Sparkle dots -->
+  <circle cx="200" cy="5" r="2" fill="#4ADE80" opacity="0.5"/>
+  <circle cx="360" cy="85" r="2" fill="#4ADE80" opacity="0.4"/>
+  <circle cx="40" cy="85" r="2" fill="#4ADE80" opacity="0.4"/>
+  <circle cx="375" cy="230" r="1.5" fill="#C090C0" opacity="0.3"/>
+  <circle cx="25" cy="230" r="1.5" fill="#C090C0" opacity="0.3"/>
+  <circle cx="150" cy="365" r="1.5" fill="#4ADE80" opacity="0.3"/>
+  <circle cx="250" cy="365" r="1.5" fill="#4ADE80" opacity="0.3"/>
+</svg>

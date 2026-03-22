@@ -1,0 +1,1808 @@
+---
+// Donna - Continuous AI Pentesting Platform
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License version 3
+// as published by the Free Software Foundation.
+
+import Base from '../../../layouts/Base.astro';
+import { getVersion } from '../../../lib/version';
+import { getTemporalClient, getWorkflowProgress, type PipelineProgress } from '../../../lib/temporal.js';
+import { getSessionByWorkflowId, getFullFindings, getComprehensiveReport, computeFindingSummaryFromFiles } from '../../../lib/audit-logs.js';
+import type { SessionData, FullFinding, ComprehensiveReport } from '../../../lib/audit-logs.js';
+import { marked } from 'marked';
+
+const donnaVersion = getVersion();
+const { runId } = Astro.params;
+
+// ── Data Fetching ──────────────────────────────────────────────────────────────
+
+let workflowId: string | null = null;
+let wfStatus = '';
+let wfType = '';
+let wfStartTime = '';
+let wfCloseTime: string | null = null;
+let wfInput: any = null;
+let progress: PipelineProgress | null = null;
+let sessionData: SessionData | null = null;
+let findings: FullFinding[] = [];
+let comprehensiveReport: ComprehensiveReport | null = null;
+let loadError: string | null = null;
+
+try {
+    const client = await getTemporalClient();
+
+    // Find workflow by runId
+    for await (const w of client.workflow.list({ query: `RunId = "${runId}"` })) {
+        workflowId = w.workflowId;
+        break;
+    }
+
+    if (workflowId) {
+        const handle = client.workflow.getHandle(workflowId, runId);
+        const desc = await handle.describe();
+
+        wfStatus = desc.status.name.toLowerCase();
+        wfType = desc.type;
+        wfStartTime = desc.startTime?.toISOString() || '';
+        wfCloseTime = desc.closeTime?.toISOString() || null;
+
+        // Extract input from history
+        try {
+            const history = await handle.fetchHistory();
+            for (const ev of history?.events || []) {
+                const attrs = (ev as any).workflowExecutionStartedEventAttributes;
+                if (attrs?.input?.payloads?.[0]?.data) {
+                    try {
+                        wfInput = JSON.parse(Buffer.from(attrs.input.payloads[0].data).toString('utf-8'));
+                    } catch {}
+                    break;
+                }
+            }
+        } catch {}
+
+        // Get progress/result
+        if (wfStatus === 'running') {
+            try { progress = await handle.query<PipelineProgress>('getProgress'); } catch {}
+        } else if (wfStatus === 'completed') {
+            try {
+                const result = await handle.result() as PipelineProgress;
+                if (result) {
+                    if (!result.findingSummary) {
+                        const backfilled = await computeFindingSummaryFromFiles(workflowId);
+                        if (backfilled) result.findingSummary = backfilled;
+                    }
+                    progress = { ...result, workflowId, elapsedMs: 0 };
+                }
+            } catch {}
+        }
+
+        // Fetch session data, findings, and comprehensive report in parallel
+        const [sd, ff, cr] = await Promise.all([
+            getSessionByWorkflowId(workflowId).catch(() => null),
+            getFullFindings(workflowId).catch(() => []),
+            getComprehensiveReport(workflowId).catch(() => null),
+        ]);
+        sessionData = sd;
+        findings = ff;
+        comprehensiveReport = cr;
+    }
+} catch (err) {
+    loadError = err instanceof Error ? err.message : 'Failed to load workflow data';
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────────
+
+function formatDate(iso: string | null) {
+    if (!iso) return 'N/A';
+    return new Date(iso).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+}
+
+function formatDateTime(iso: string | null) {
+    if (!iso) return 'N/A';
+    return new Date(iso).toLocaleString('en-US', {
+        month: 'short', day: 'numeric', year: 'numeric',
+        hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+    });
+}
+
+function getElapsed(start: string, end: string | null) {
+    const s = new Date(start).getTime();
+    const e = end ? new Date(end).getTime() : Date.now();
+    const ms = e - s;
+    const seconds = Math.floor(ms / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(minutes / 60);
+    if (hours > 0) return `${hours}h ${minutes % 60}m ${seconds % 60}s`;
+    if (minutes > 0) return `${minutes}m ${seconds % 60}s`;
+    return `${seconds}s`;
+}
+
+// Configure marked for safe rendering
+marked.setOptions({ breaks: true, gfm: true });
+
+function renderMarkdown(md: string): string {
+    if (!md) return '';
+    return marked.parse(md) as string;
+}
+
+// Computed data
+const targetUrl = wfInput?.webUrl || sessionData?.session?.webUrl || 'Unknown Target';
+const scanDate = formatDate(wfStartTime);
+const totalCost = progress?.summary?.totalCostUsd ?? sessionData?.metrics?.total_cost_usd ?? 0;
+const totalDurationMs = progress?.summary?.totalDurationMs ?? sessionData?.metrics?.total_duration_ms ?? 0;
+
+const findingCounts = {
+    critical: findings.filter(f => f.severity === 'Critical').length,
+    high: findings.filter(f => f.severity === 'High').length,
+    medium: findings.filter(f => f.severity === 'Medium').length,
+    low: findings.filter(f => f.severity === 'Low').length,
+    informational: findings.filter(f => f.severity === 'Informational').length,
+};
+const totalFindings = findings.length;
+
+// Risk level
+const overallRisk = findingCounts.critical > 0 ? 'Critical' :
+                    findingCounts.high > 0 ? 'High' :
+                    findingCounts.medium > 0 ? 'Medium' :
+                    findingCounts.low > 0 ? 'Low' : 'Informational';
+
+const riskClass = overallRisk.toLowerCase();
+
+// Phase data
+const phases = sessionData?.metrics?.phases || {};
+const phaseEntries = Object.entries(phases).map(([name, data]) => ({
+    name: name.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+    durationMs: data.duration_ms,
+    durationMin: Math.round(data.duration_ms / 60000),
+    costUsd: data.cost_usd,
+    agentCount: data.agent_count,
+    pct: data.duration_percentage,
+}));
+
+// Agent data
+const agents = Object.entries(sessionData?.metrics?.agents || {}).map(([name, data]) => ({
+    name,
+    model: data.model || 'unknown',
+    status: data.status,
+    costUsd: data.total_cost_usd,
+    durationMs: data.final_duration_ms,
+}));
+
+// Category labels for display
+const categoryLabels: Record<string, string> = {
+    auth: 'Authentication',
+    xss: 'Cross-Site Scripting',
+    ssrf: 'Server-Side Request Forgery',
+    authz: 'Authorization',
+    injection: 'Injection',
+};
+
+// Group findings by category
+const findingsByCategory = findings.reduce((acc, f) => {
+    if (!acc[f.category]) acc[f.category] = [];
+    acc[f.category].push(f);
+    return acc;
+}, {} as Record<string, FullFinding[]>);
+
+// Pre-compute priority findings for template
+const priorityFindings = findings.filter(f => f.severity === 'Critical' || f.severity === 'High').slice(0, 5);
+
+// Pre-compute category badge counts
+const categoryBadgeCounts = Object.entries(findingsByCategory).map(([cat, catFindings]) => ({
+    cat,
+    name: categoryLabels[cat] || cat,
+    total: catFindings.length,
+    critical: catFindings.filter(f => f.severity === 'Critical').length,
+    high: catFindings.filter(f => f.severity === 'High').length,
+    medium: catFindings.filter(f => f.severity === 'Medium').length,
+    low: catFindings.filter(f => f.severity === 'Low').length,
+}));
+
+// Helper to create anchor-safe IDs
+function anchorId(id: string): string {
+    return id.replace(/\s+/g, '-').replace(/[^a-zA-Z0-9-]/g, '');
+}
+
+// Pre-computed verdict HTML
+const verdictHtml = findingCounts.critical > 0
+    ? `<div class="exec-verdict"><p class="verdict-critical"><strong>${findingCounts.critical} critical</strong> vulnerabilities discovered requiring <strong>immediate remediation</strong>.</p></div>`
+    : findingCounts.high > 0
+    ? `<div class="exec-verdict"><p class="verdict-high"><strong>${findingCounts.high} high-severity</strong> vulnerabilities discovered. Prompt remediation is recommended.</p></div>`
+    : totalFindings > 0
+    ? `<div class="exec-verdict"><p class="verdict-moderate">No critical or high-severity vulnerabilities were found.</p></div>`
+    : `<div class="exec-verdict"><p class="verdict-clean">No vulnerabilities were identified during this assessment.</p></div>`;
+
+// Pre-format currency values to avoid $ + { conflicts in Astro templates
+const totalCostFormatted = '$' + totalCost.toFixed(2);
+const totalDurationFormatted = Math.round(totalDurationMs / 60000) + 'm';
+function formatCost(usd: number): string { return '$' + usd.toFixed(2); }
+
+// Pre-computed strings for the template
+const vulnWord = totalFindings === 1 ? 'vulnerability' : 'vulnerabilities';
+const dedupNote = comprehensiveReport?.deduplicatedCount
+    ? ` (after merging ${comprehensiveReport.deduplicatedCount} duplicate findings)`
+    : '';
+
+// TOC category entries
+const tocCategories = Object.entries(findingsByCategory).map(([cat, catFindings]) => ({
+    cat,
+    label: (categoryLabels[cat] || cat) + ' (' + catFindings.length + ')',
+}));
+---
+
+<Base title={`Security Report — ${targetUrl}`}>
+    {/* Floating navigation bar (hidden in print) */}
+    <div class="report-nav">
+        <a href={`/workflow/${runId}`} class="report-nav-back">
+            Back to Dashboard
+        </a>
+        <div class="report-nav-right">
+            <span class="version-badge">v{donnaVersion}</span>
+            <button class="btn btn-primary" id="printBtn">
+                Export PDF
+            </button>
+        </div>
+    </div>
+
+    <div class="report-page">
+        {loadError && (
+            <div class="banner banner-error" style="margin: 2rem auto; max-width: 800px;">
+                Failed to load report: {loadError}
+            </div>
+        )}
+
+        {!workflowId ? (
+            <div class="report-empty">
+                <h2>Report Not Available</h2>
+                <p>No workflow found for run ID <code>{runId}</code></p>
+                <a href="/" class="btn btn-secondary">Back to Workflows</a>
+            </div>
+        ) : (
+            <div>
+                {/* ═══════════════════════════════════════════════════════════
+                    SECTION 1: Report Cover / Header
+                    ═══════════════════════════════════════════════════════════ */}
+                <header class="report-cover">
+                    <div class="report-cover-badge">DONNA</div>
+                    <h1 class="report-cover-title">Security Assessment Report</h1>
+                    <div class="report-cover-target">{targetUrl}</div>
+                    <div class="report-cover-date">{scanDate}</div>
+
+                    <div class={`report-risk-indicator ${riskClass}`}>
+                        <div class="risk-label">Overall Risk</div>
+                        <div class="risk-value">{overallRisk}</div>
+                    </div>
+
+                    <div class="report-cover-meta">
+                        <div class="cover-meta-item">
+                            <span class="cover-meta-label">Duration</span>
+                            <span class="cover-meta-value">{getElapsed(wfStartTime, wfCloseTime)}</span>
+                        </div>
+                        <div class="cover-meta-item">
+                            <span class="cover-meta-label">Cost</span>
+                            <span class="cover-meta-value">{totalCostFormatted}</span>
+                        </div>
+                        <div class="cover-meta-item">
+                            <span class="cover-meta-label">Findings</span>
+                            <span class="cover-meta-value">{totalFindings}</span>
+                        </div>
+                        <div class="cover-meta-item">
+                            <span class="cover-meta-label">Agents</span>
+                            <span class="cover-meta-value">{agents.length}</span>
+                        </div>
+                    </div>
+                </header>
+
+                {/* ═══════════════════════════════════════════════════════════
+                    SECTION 2: Table of Contents
+                    ═══════════════════════════════════════════════════════════ */}
+                <nav class="report-toc" id="toc">
+                    <h2 class="report-section-title">Table of Contents</h2>
+                    <ol class="toc-list">
+                        <li><a href="#executive-summary">Executive Summary</a></li>
+                        <li><a href="#severity-breakdown">Severity Breakdown</a></li>
+                        {comprehensiveReport && comprehensiveReport.rootCauses.length > 0 && (
+                            <li><a href="#root-cause">Root-Cause Correlation</a></li>
+                        )}
+                        <li>
+                            <a href="#findings">Detailed Findings</a>
+                            <ol class="toc-sublist">
+                                {tocCategories.map(tc => (
+                                    <li>
+                                        <a href={`#cat-${tc.cat}`}>{tc.label}</a>
+                                    </li>
+                                ))}
+                            </ol>
+                        </li>
+                        {phaseEntries.length > 0 && (
+                            <li><a href="#methodology">Methodology & Phase Breakdown</a></li>
+                        )}
+                        <li><a href="#appendix">Appendix</a></li>
+                    </ol>
+                </nav>
+
+                {/* ═══════════════════════════════════════════════════════════
+                    SECTION 3: Executive Summary
+                    ═══════════════════════════════════════════════════════════ */}
+                <section class="report-section" id="executive-summary">
+                    <h2 class="report-section-title">Executive Summary</h2>
+
+                    <div class="exec-summary-card">
+                        <p class="exec-summary-text">
+                            An automated security assessment of <strong>{targetUrl}</strong> was conducted
+                            on {scanDate} using {"Donna's"} AI-powered penetration testing pipeline.
+                            The assessment identified <strong>{totalFindings} unique {vulnWord}</strong>{dedupNote}.
+                        </p>
+
+                        <Fragment set:html={verdictHtml} />
+
+                        {/* Top findings preview */}
+                        {priorityFindings.length > 0 && (
+                            <div class="exec-top-findings">
+                                <h4>Priority Findings</h4>
+                                <ul class="top-findings-list">
+                                    {priorityFindings.map(f => (
+                                        <li>
+                                            <span class={`sev-tag ${f.severity.toLowerCase()}`}>{f.severity}</span>
+                                            <a href={`#finding-${anchorId(f.id)}`}>{f.id}: {f.title}</a>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                        )}
+                    </div>
+                </section>
+
+                {/* ═══════════════════════════════════════════════════════════
+                    SECTION 4: Severity Breakdown
+                    ═══════════════════════════════════════════════════════════ */}
+                <section class="report-section" id="severity-breakdown">
+                    <h2 class="report-section-title">Severity Breakdown</h2>
+
+                    <div class="severity-chart">
+                        {[
+                            { label: 'Critical', count: findingCounts.critical, cls: 'critical' },
+                            { label: 'High', count: findingCounts.high, cls: 'high' },
+                            { label: 'Medium', count: findingCounts.medium, cls: 'medium' },
+                            { label: 'Low', count: findingCounts.low, cls: 'low' },
+                            { label: 'Informational', count: findingCounts.informational, cls: 'info' },
+                        ].map(sev => (
+                            <div class="severity-row">
+                                <span class={`severity-row-label ${sev.cls}`}>{sev.label}</span>
+                                <div class="severity-bar-track">
+                                    <div class={`severity-bar-fill ${sev.cls}`}
+                                         style={`width: ${totalFindings > 0 ? (sev.count / totalFindings) * 100 : 0}%`}>
+                                    </div>
+                                </div>
+                                <span class={`severity-row-count ${sev.cls}`}>{sev.count}</span>
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* Category distribution */}
+                    <div class="category-grid">
+                        {categoryBadgeCounts.map(cc => (
+                            <div class="category-card">
+                                <div class="category-card-header">
+                                    <span class="category-card-name">{cc.name}</span>
+                                    <span class="category-card-count">{cc.total}</span>
+                                </div>
+                                <div class="category-card-badges">
+                                    {cc.critical > 0 && <span class="finding-badge critical">{cc.critical}C</span>}
+                                    {cc.high > 0 && <span class="finding-badge high">{cc.high}H</span>}
+                                    {cc.medium > 0 && <span class="finding-badge medium">{cc.medium}M</span>}
+                                    {cc.low > 0 && <span class="finding-badge low">{cc.low}L</span>}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </section>
+
+                {/* ═══════════════════════════════════════════════════════════
+                    SECTION 5: Root-Cause Correlation
+                    ═══════════════════════════════════════════════════════════ */}
+                {comprehensiveReport && comprehensiveReport.rootCauses.length > 0 && (
+                    <section class="report-section" id="root-cause">
+                        <h2 class="report-section-title">Root-Cause Correlation</h2>
+                        <p class="section-intro">
+                            Multiple findings were identified independently by different agents but share the same underlying root cause.
+                            Addressing these root causes will resolve multiple vulnerabilities simultaneously.
+                        </p>
+                        <div class="root-cause-list">
+                            {comprehensiveReport.rootCauses.map(rc => (
+                                <div class="root-cause-card">
+                                    <div class="root-cause-header">
+                                        <span class={`sev-tag ${rc.severity.toLowerCase()}`}>{rc.severity}</span>
+                                        <span class="root-cause-name">{rc.rootCause}</span>
+                                    </div>
+                                    <div class="root-cause-endpoint">
+                                        <code>{rc.endpoint}</code>
+                                    </div>
+                                    <div class="root-cause-meta">
+                                        <span class="root-cause-merged">
+                                            Merged: {rc.mergedIds.join(', ')}
+                                        </span>
+                                        <span class="root-cause-sources">
+                                            Sources: {rc.sources.join(', ')}
+                                        </span>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </section>
+                )}
+
+                {/* ═══════════════════════════════════════════════════════════
+                    SECTION 6: Detailed Findings
+                    ═══════════════════════════════════════════════════════════ */}
+                <section class="report-section" id="findings">
+                    <h2 class="report-section-title">Detailed Findings</h2>
+
+                    {Object.entries(findingsByCategory).map(([cat, catFindings]) => (
+                        <div class="finding-category-section" id={`cat-${cat}`}>
+                            <h3 class="finding-category-heading">
+                                <span class="finding-category-icon">
+                                    {cat === 'auth' ? '🔐' : cat === 'xss' ? '💉' : cat === 'ssrf' ? '🌐' : cat === 'authz' ? '🛡' : '💊'}
+                                </span>
+                                {categoryLabels[cat] || cat}
+                                <span class="finding-category-count">{catFindings.length} finding{catFindings.length !== 1 ? 's' : ''}</span>
+                            </h3>
+
+                            {catFindings.map((f) => (
+                                <article class="finding-card" id={`finding-${anchorId(f.id)}`}>
+                                    <div class="finding-card-header">
+                                        <div class="finding-card-header-left">
+                                            <span class={`sev-badge ${f.severity.toLowerCase()}`}>{f.severity}</span>
+                                            <span class="finding-card-id">{f.id}</span>
+                                        </div>
+                                        <a href="#toc" class="finding-toc-link">Table of Contents</a>
+                                    </div>
+                                    <h4 class="finding-card-title">{f.title}</h4>
+
+                                    {/* Key metadata */}
+                                    <div class="finding-meta-grid">
+                                        {f.location && (
+                                            <div class="finding-meta-item">
+                                                <span class="finding-meta-label">Location</span>
+                                                <code class="finding-meta-value">{f.location}</code>
+                                            </div>
+                                        )}
+                                        {f.impact && (
+                                            <div class="finding-meta-item">
+                                                <span class="finding-meta-label">Impact</span>
+                                                <span class="finding-meta-value">{f.impact}</span>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Full evidence rendered from markdown */}
+                                    <div class="finding-evidence" set:html={renderMarkdown(f.fullEvidence)} />
+
+                                    {f.remediation && (
+                                        <div class="finding-remediation">
+                                            <h5>Remediation</h5>
+                                            <div set:html={renderMarkdown(f.remediation)} />
+                                        </div>
+                                    )}
+                                </article>
+                            ))}
+                        </div>
+                    ))}
+
+                    {findings.length === 0 && (
+                        <div class="report-empty-findings">
+                            <p>No exploitable vulnerabilities were identified during this assessment.</p>
+                        </div>
+                    )}
+                </section>
+
+                {/* ═══════════════════════════════════════════════════════════
+                    SECTION 7: Methodology & Phase Breakdown
+                    ═══════════════════════════════════════════════════════════ */}
+                {phaseEntries.length > 0 && (
+                    <section class="report-section" id="methodology">
+                        <h2 class="report-section-title">Methodology & Phase Breakdown</h2>
+                        <p class="section-intro">
+                            The assessment followed {"Donna's"} automated penetration testing pipeline,
+                            which progresses through distinct phases — each powered by specialized AI agents.
+                        </p>
+
+                        {/* Phase timeline bar */}
+                        <div class="phase-timeline">
+                            {phaseEntries.map((p, i) => (
+                                <div class={`phase-segment phase-color-${i}`}
+                                     style={`flex: ${p.pct || 1}`}
+                                     title={p.name + ': ' + p.durationMin + 'min, ' + formatCost(p.costUsd)}>
+                                </div>
+                            ))}
+                        </div>
+
+                        <div class="phase-table-container">
+                            <table class="phase-table">
+                                <thead>
+                                    <tr>
+                                        <th>Phase</th>
+                                        <th>Duration</th>
+                                        <th>Cost</th>
+                                        <th>Agents</th>
+                                        <th>Share</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {phaseEntries.map((p) => (
+                                        <tr>
+                                            <td class="phase-name">{p.name}</td>
+                                            <td class="phase-duration">{p.durationMin}m</td>
+                                            <td class="phase-cost">{formatCost(p.costUsd)}</td>
+                                            <td class="phase-agents">{p.agentCount}</td>
+                                            <td class="phase-pct">{Math.round(p.pct)}%</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                                <tfoot>
+                                    <tr class="phase-total-row">
+                                        <td class="phase-name">Total</td>
+                                        <td class="phase-duration">{totalDurationFormatted}</td>
+                                        <td class="phase-cost">{totalCostFormatted}</td>
+                                        <td class="phase-agents">{agents.length}</td>
+                                        <td class="phase-pct">100%</td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                    </section>
+                )}
+
+                {/* ═══════════════════════════════════════════════════════════
+                    SECTION 8: Appendix
+                    ═══════════════════════════════════════════════════════════ */}
+                <section class="report-section" id="appendix">
+                    <h2 class="report-section-title">Appendix</h2>
+
+                    <div class="appendix-grid">
+                        <div class="appendix-card">
+                            <h4>Assessment Details</h4>
+                            <table class="appendix-table">
+                                <tbody>
+                                    <tr>
+                                        <td class="appendix-label">Target</td>
+                                        <td>{targetUrl}</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="appendix-label">Workflow ID</td>
+                                        <td><code>{workflowId}</code></td>
+                                    </tr>
+                                    <tr>
+                                        <td class="appendix-label">Run ID</td>
+                                        <td><code>{runId}</code></td>
+                                    </tr>
+                                    <tr>
+                                        <td class="appendix-label">Start Time</td>
+                                        <td>{formatDateTime(wfStartTime)}</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="appendix-label">End Time</td>
+                                        <td>{formatDateTime(wfCloseTime)}</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="appendix-label">Duration</td>
+                                        <td>{getElapsed(wfStartTime, wfCloseTime)}</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="appendix-label">Total Cost</td>
+                                        <td>{totalCostFormatted}</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="appendix-label">Status</td>
+                                        <td>{wfStatus}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        {agents.length > 0 && (
+                            <div class="appendix-card">
+                                <h4>Agent Breakdown</h4>
+                                <table class="appendix-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Agent</th>
+                                            <th>Model</th>
+                                            <th>Cost</th>
+                                            <th>Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {agents.map(a => (
+                                            <tr>
+                                                <td>{a.name}</td>
+                                                <td><code>{a.model}</code></td>
+                                                <td>{formatCost(a.costUsd)}</td>
+                                                <td>
+                                                    <span class={a.status === 'success' ? 'text-success' : 'text-error'}>
+                                                        {a.status}
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                    </div>
+                </section>
+
+                {/* Footer */}
+                <footer class="report-footer">
+                    <div class="report-footer-line"></div>
+                    <p>
+                        Generated by <strong>Donna</strong> v{donnaVersion} {"—"}
+                        AI-Powered Continuous Security Assessment
+                    </p>
+                    <p class="report-footer-date">{formatDateTime(new Date().toISOString())}</p>
+                </footer>
+            </div>
+        )}
+    </div>
+
+    <script is:inline>
+        document.getElementById('printBtn')?.addEventListener('click', () => {
+            window.print();
+        });
+    </script>
+</Base>
+
+<style is:global>
+    /* ═══════════════════════════════════════════════════════════════════════════
+       Report Page — Standalone Layout (no sidebar)
+       ═══════════════════════════════════════════════════════════════════════════ */
+
+    .report-page {
+        max-width: 960px;
+        margin: 0 auto;
+        padding: 2rem 2rem 4rem;
+        min-height: 100vh;
+    }
+
+    /* ── Navigation Bar ──────────────────────────────────── */
+    .report-nav {
+        position: sticky;
+        top: 0;
+        z-index: 100;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0.75rem 2rem;
+        background: rgba(10, 10, 20, 0.85);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        border-bottom: 1px solid var(--border);
+    }
+
+    .report-nav-back {
+        font-size: 0.85rem;
+        color: var(--text-muted);
+        text-decoration: none;
+    }
+
+    .report-nav-back:hover {
+        color: var(--white);
+    }
+
+    .report-nav-right {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+    }
+
+    /* ── Cover / Header ──────────────────────────────────── */
+    .report-cover {
+        text-align: center;
+        padding: 4rem 2rem 3rem;
+        margin-bottom: 2rem;
+        border-bottom: 1px solid var(--border);
+    }
+
+    .report-cover-badge {
+        display: inline-block;
+        font-size: 0.7rem;
+        font-weight: 800;
+        letter-spacing: 0.3em;
+        text-transform: uppercase;
+        color: var(--purple-light);
+        background: var(--purple-subtle);
+        padding: 0.35rem 1.25rem;
+        border-radius: var(--radius-full);
+        border: 1px solid rgba(123, 45, 142, 0.3);
+        margin-bottom: 1.5rem;
+    }
+
+    .report-cover-title {
+        font-size: 2.25rem;
+        font-weight: 800;
+        color: var(--white);
+        letter-spacing: -0.04em;
+        margin-bottom: 0.75rem;
+        line-height: 1.15;
+    }
+
+    .report-cover-target {
+        font-size: 1.1rem;
+        color: var(--purple-light);
+        font-family: var(--font-mono);
+        margin-bottom: 0.35rem;
+    }
+
+    .report-cover-date {
+        font-size: 0.85rem;
+        color: var(--text-dim);
+        margin-bottom: 2rem;
+    }
+
+    .report-risk-indicator {
+        display: inline-flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 1rem 2.5rem;
+        border-radius: var(--radius-lg);
+        margin-bottom: 2rem;
+    }
+
+    .report-risk-indicator.critical {
+        background: rgba(220, 38, 38, 0.1);
+        border: 1px solid rgba(220, 38, 38, 0.3);
+    }
+    .report-risk-indicator.high {
+        background: rgba(234, 88, 12, 0.1);
+        border: 1px solid rgba(234, 88, 12, 0.3);
+    }
+    .report-risk-indicator.medium {
+        background: rgba(202, 138, 4, 0.1);
+        border: 1px solid rgba(202, 138, 4, 0.3);
+    }
+    .report-risk-indicator.low {
+        background: rgba(37, 99, 235, 0.1);
+        border: 1px solid rgba(37, 99, 235, 0.3);
+    }
+    .report-risk-indicator.informational {
+        background: rgba(148, 163, 184, 0.08);
+        border: 1px solid rgba(148, 163, 184, 0.2);
+    }
+
+    .risk-label {
+        font-size: 0.65rem;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        color: var(--text-dim);
+        font-weight: 600;
+        margin-bottom: 0.25rem;
+    }
+
+    .risk-value {
+        font-size: 1.5rem;
+        font-weight: 800;
+        letter-spacing: -0.02em;
+    }
+
+    .report-risk-indicator.critical .risk-value { color: #f87171; }
+    .report-risk-indicator.high .risk-value { color: #fb923c; }
+    .report-risk-indicator.medium .risk-value { color: #fbbf24; }
+    .report-risk-indicator.low .risk-value { color: #60a5fa; }
+    .report-risk-indicator.informational .risk-value { color: #94a3b8; }
+
+    .report-cover-meta {
+        display: flex;
+        justify-content: center;
+        gap: 2.5rem;
+        flex-wrap: wrap;
+    }
+
+    .cover-meta-item {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.2rem;
+    }
+
+    .cover-meta-label {
+        font-size: 0.65rem;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: var(--text-faint);
+        font-weight: 600;
+    }
+
+    .cover-meta-value {
+        font-size: 1.1rem;
+        font-weight: 700;
+        color: var(--white);
+        font-family: var(--font-mono);
+    }
+
+    /* ── Table of Contents ──────────────────────────────── */
+    .report-toc {
+        padding: 2rem;
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        margin-bottom: 2.5rem;
+    }
+
+    .toc-list {
+        padding-left: 1.5rem;
+        counter-reset: toc;
+    }
+
+    .toc-list > li {
+        margin-bottom: 0.6rem;
+        font-size: 0.9rem;
+        color: var(--text);
+    }
+
+    .toc-list a {
+        color: var(--purple-light);
+        text-decoration: none;
+        transition: color 0.15s;
+    }
+
+    .toc-list a:hover {
+        color: var(--white);
+    }
+
+    .toc-sublist {
+        padding-left: 1.5rem;
+        margin-top: 0.4rem;
+    }
+
+    .toc-sublist li {
+        margin-bottom: 0.3rem;
+        font-size: 0.82rem;
+        color: var(--text-muted);
+    }
+
+    /* ── Report Sections ──────────────────────────────── */
+    .report-section {
+        margin-bottom: 3rem;
+        padding-top: 0.5rem;
+    }
+
+    .report-section-title {
+        font-size: 1.35rem;
+        font-weight: 700;
+        color: var(--white);
+        letter-spacing: -0.02em;
+        margin-bottom: 1.25rem;
+        padding-bottom: 0.75rem;
+        border-bottom: 1px solid var(--border);
+    }
+
+    .section-intro {
+        font-size: 0.88rem;
+        color: var(--text-muted);
+        line-height: 1.7;
+        margin-bottom: 1.5rem;
+    }
+
+    /* ── Executive Summary ──────────────────────────────── */
+    .exec-summary-card {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        padding: 2rem;
+    }
+
+    .exec-summary-text {
+        font-size: 0.92rem;
+        color: var(--text);
+        line-height: 1.8;
+        margin-bottom: 1.25rem;
+    }
+
+    .exec-verdict {
+        padding: 1rem 1.5rem;
+        border-radius: var(--radius);
+        margin-bottom: 1.25rem;
+    }
+
+    .verdict-critical {
+        background: rgba(220, 38, 38, 0.08);
+        border-left: 3px solid #f87171;
+        padding: 1rem 1.25rem;
+        border-radius: 0 var(--radius) var(--radius) 0;
+        color: var(--text);
+        line-height: 1.7;
+        font-size: 0.88rem;
+    }
+
+    .verdict-high {
+        background: rgba(234, 88, 12, 0.08);
+        border-left: 3px solid #fb923c;
+        padding: 1rem 1.25rem;
+        border-radius: 0 var(--radius) var(--radius) 0;
+        color: var(--text);
+        line-height: 1.7;
+        font-size: 0.88rem;
+    }
+
+    .verdict-moderate {
+        background: rgba(202, 138, 4, 0.06);
+        border-left: 3px solid #fbbf24;
+        padding: 1rem 1.25rem;
+        border-radius: 0 var(--radius) var(--radius) 0;
+        color: var(--text);
+        line-height: 1.7;
+        font-size: 0.88rem;
+    }
+
+    .verdict-clean {
+        background: rgba(74, 222, 128, 0.06);
+        border-left: 3px solid var(--success);
+        padding: 1rem 1.25rem;
+        border-radius: 0 var(--radius) var(--radius) 0;
+        color: var(--text);
+        line-height: 1.7;
+        font-size: 0.88rem;
+    }
+
+    .exec-top-findings {
+        margin-top: 1.25rem;
+    }
+
+    .exec-top-findings h4 {
+        font-size: 0.78rem;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: var(--text-dim);
+        font-weight: 600;
+        margin-bottom: 0.75rem;
+    }
+
+    .top-findings-list {
+        list-style: none;
+        padding: 0;
+    }
+
+    .top-findings-list li {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 0.5rem 0;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+        font-size: 0.85rem;
+    }
+
+    .top-findings-list li:last-child {
+        border-bottom: none;
+    }
+
+    .top-findings-list a {
+        color: var(--text);
+        text-decoration: none;
+    }
+
+    .top-findings-list a:hover {
+        color: var(--purple-light);
+    }
+
+    /* ── Severity Tags & Badges ──────────────────────── */
+    .sev-tag {
+        display: inline-flex;
+        align-items: center;
+        font-size: 0.68rem;
+        font-weight: 700;
+        padding: 0.15rem 0.5rem;
+        border-radius: var(--radius-full);
+        letter-spacing: 0.02em;
+        flex-shrink: 0;
+    }
+
+    .sev-tag.critical { background: rgba(220, 38, 38, 0.15); color: #f87171; border: 1px solid rgba(220, 38, 38, 0.3); }
+    .sev-tag.high { background: rgba(234, 88, 12, 0.15); color: #fb923c; border: 1px solid rgba(234, 88, 12, 0.3); }
+    .sev-tag.medium { background: rgba(202, 138, 4, 0.15); color: #fbbf24; border: 1px solid rgba(202, 138, 4, 0.3); }
+    .sev-tag.low { background: rgba(37, 99, 235, 0.15); color: #60a5fa; border: 1px solid rgba(37, 99, 235, 0.3); }
+    .sev-tag.informational, .sev-tag.info { background: rgba(148, 163, 184, 0.1); color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.2); }
+
+    .sev-badge {
+        display: inline-flex;
+        align-items: center;
+        font-size: 0.72rem;
+        font-weight: 700;
+        padding: 0.2rem 0.65rem;
+        border-radius: var(--radius-full);
+        letter-spacing: 0.03em;
+    }
+
+    .sev-badge.critical { background: rgba(220, 38, 38, 0.15); color: #f87171; border: 1px solid rgba(220, 38, 38, 0.3); }
+    .sev-badge.high { background: rgba(234, 88, 12, 0.15); color: #fb923c; border: 1px solid rgba(234, 88, 12, 0.3); }
+    .sev-badge.medium { background: rgba(202, 138, 4, 0.15); color: #fbbf24; border: 1px solid rgba(202, 138, 4, 0.3); }
+    .sev-badge.low { background: rgba(37, 99, 235, 0.15); color: #60a5fa; border: 1px solid rgba(37, 99, 235, 0.3); }
+    .sev-badge.informational, .sev-badge.info { background: rgba(148, 163, 184, 0.1); color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.2); }
+
+    /* ── Severity Chart ──────────────────────────────── */
+    .severity-chart {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        padding: 1.5rem 2rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .severity-row {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        padding: 0.5rem 0;
+    }
+
+    .severity-row-label {
+        width: 100px;
+        font-size: 0.82rem;
+        font-weight: 600;
+        flex-shrink: 0;
+    }
+
+    .severity-row-label.critical { color: #f87171; }
+    .severity-row-label.high { color: #fb923c; }
+    .severity-row-label.medium { color: #fbbf24; }
+    .severity-row-label.low { color: #60a5fa; }
+    .severity-row-label.info { color: #94a3b8; }
+
+    .severity-bar-track {
+        flex: 1;
+        height: 22px;
+        background: rgba(255, 255, 255, 0.04);
+        border-radius: 6px;
+        overflow: hidden;
+    }
+
+    .severity-bar-fill {
+        height: 100%;
+        border-radius: 6px;
+        min-width: 2px;
+        transition: width 0.6s ease;
+    }
+
+    .severity-bar-fill.critical { background: linear-gradient(90deg, #dc2626, #f87171); }
+    .severity-bar-fill.high { background: linear-gradient(90deg, #ea580c, #fb923c); }
+    .severity-bar-fill.medium { background: linear-gradient(90deg, #ca8a04, #fbbf24); }
+    .severity-bar-fill.low { background: linear-gradient(90deg, #2563eb, #60a5fa); }
+    .severity-bar-fill.info { background: linear-gradient(90deg, #64748b, #94a3b8); }
+
+    .severity-row-count {
+        width: 32px;
+        text-align: right;
+        font-size: 0.9rem;
+        font-weight: 700;
+        font-family: var(--font-mono);
+        flex-shrink: 0;
+    }
+
+    .severity-row-count.critical { color: #f87171; }
+    .severity-row-count.high { color: #fb923c; }
+    .severity-row-count.medium { color: #fbbf24; }
+    .severity-row-count.low { color: #60a5fa; }
+    .severity-row-count.info { color: #94a3b8; }
+
+    /* ── Category Grid ──────────────────────────────── */
+    .category-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 1rem;
+    }
+
+    .category-card {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 1.25rem;
+        transition: border-color 0.2s;
+    }
+
+    .category-card:hover {
+        border-color: var(--border-hover);
+    }
+
+    .category-card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 0.75rem;
+    }
+
+    .category-card-name {
+        font-size: 0.82rem;
+        font-weight: 600;
+        color: var(--text);
+    }
+
+    .category-card-count {
+        font-size: 1.1rem;
+        font-weight: 800;
+        color: var(--white);
+        font-family: var(--font-mono);
+    }
+
+    .category-card-badges {
+        display: flex;
+        gap: 0.3rem;
+    }
+
+    /* ── Root Cause Cards ──────────────────────────────── */
+    .root-cause-list {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+    }
+
+    .root-cause-card {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 1.25rem;
+    }
+
+    .root-cause-header {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .root-cause-name {
+        font-size: 0.9rem;
+        font-weight: 600;
+        color: var(--white);
+    }
+
+    .root-cause-endpoint {
+        margin-bottom: 0.75rem;
+    }
+
+    .root-cause-endpoint code {
+        font-size: 0.78rem;
+        color: var(--text-muted);
+        background: rgba(255, 255, 255, 0.04);
+        padding: 0.15rem 0.5rem;
+        border-radius: 4px;
+    }
+
+    .root-cause-meta {
+        display: flex;
+        flex-direction: column;
+        gap: 0.3rem;
+        font-size: 0.78rem;
+        color: var(--text-dim);
+    }
+
+    .root-cause-merged { color: var(--text-muted); }
+
+    /* ── Finding Category Sections ──────────────────── */
+    .finding-category-section {
+        margin-bottom: 2.5rem;
+    }
+
+    .finding-category-heading {
+        display: flex;
+        align-items: center;
+        gap: 0.65rem;
+        font-size: 1.1rem;
+        font-weight: 700;
+        color: var(--white);
+        margin-bottom: 1.25rem;
+        padding-bottom: 0.5rem;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    }
+
+    .finding-category-icon {
+        font-size: 1.25rem;
+    }
+
+    .finding-category-count {
+        margin-left: auto;
+        font-size: 0.72rem;
+        font-weight: 600;
+        color: var(--text-dim);
+    }
+
+    /* ── Finding Cards ──────────────────────────────── */
+    .finding-card {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        padding: 2rem;
+        margin-bottom: 1.5rem;
+        transition: border-color 0.2s;
+    }
+
+    .finding-card:hover {
+        border-color: var(--border-hover);
+    }
+
+    .finding-card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 0.75rem;
+    }
+
+    .finding-card-header-left {
+        display: flex;
+        align-items: center;
+        gap: 0.65rem;
+    }
+
+    .finding-card-id {
+        font-family: var(--font-mono);
+        font-size: 0.78rem;
+        color: var(--text-dim);
+    }
+
+    .finding-toc-link {
+        font-size: 0.72rem;
+        color: var(--text-faint);
+        text-decoration: none;
+    }
+
+    .finding-toc-link:hover {
+        color: var(--purple-light);
+    }
+
+    .finding-card-title {
+        font-size: 1.05rem;
+        font-weight: 700;
+        color: var(--white);
+        margin-bottom: 1rem;
+        line-height: 1.4;
+    }
+
+    /* ── Finding Metadata Grid ──────────────────────── */
+    .finding-meta-grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 0.5rem;
+        margin-bottom: 1.25rem;
+        padding: 1rem;
+        background: rgba(255, 255, 255, 0.02);
+        border-radius: var(--radius);
+        border: 1px solid rgba(255, 255, 255, 0.04);
+    }
+
+    .finding-meta-item {
+        display: flex;
+        gap: 0.75rem;
+    }
+
+    .finding-meta-label {
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: var(--text-dim);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        min-width: 80px;
+        padding-top: 0.15rem;
+        flex-shrink: 0;
+    }
+
+    .finding-meta-value {
+        font-size: 0.85rem;
+        color: var(--text);
+        line-height: 1.5;
+        word-break: break-word;
+    }
+
+    code.finding-meta-value {
+        font-family: var(--font-mono);
+        font-size: 0.8rem;
+        color: var(--purple-light);
+    }
+
+    /* ── Finding Evidence (rendered markdown) ────────── */
+    .finding-evidence {
+        font-size: 0.85rem;
+        color: var(--text);
+        line-height: 1.75;
+    }
+
+    .finding-evidence h1, .finding-evidence h2, .finding-evidence h3 {
+        color: var(--white);
+        margin-top: 1.5rem;
+        margin-bottom: 0.5rem;
+        font-weight: 600;
+    }
+
+    .finding-evidence h3 {
+        font-size: 1rem;
+        display: none; /* Hide the ### heading since we already show the title */
+    }
+
+    .finding-evidence h4 {
+        font-size: 0.88rem;
+        color: var(--white);
+        margin-top: 1.25rem;
+        margin-bottom: 0.4rem;
+    }
+
+    .finding-evidence p {
+        margin-bottom: 0.75rem;
+    }
+
+    .finding-evidence strong {
+        color: var(--white);
+        font-weight: 600;
+    }
+
+    .finding-evidence code {
+        font-family: var(--font-mono);
+        font-size: 0.8rem;
+        background: rgba(255, 255, 255, 0.06);
+        padding: 0.15rem 0.4rem;
+        border-radius: 4px;
+        color: var(--purple-light);
+    }
+
+    .finding-evidence pre {
+        background: rgba(0, 0, 0, 0.4);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 1rem 1.25rem;
+        overflow-x: auto;
+        margin: 0.75rem 0;
+        font-size: 0.78rem;
+        line-height: 1.6;
+    }
+
+    .finding-evidence pre code {
+        background: none;
+        padding: 0;
+        color: var(--text);
+        font-size: inherit;
+    }
+
+    .finding-evidence ul, .finding-evidence ol {
+        padding-left: 1.5rem;
+        margin-bottom: 0.75rem;
+    }
+
+    .finding-evidence li {
+        margin-bottom: 0.35rem;
+    }
+
+    .finding-evidence table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 0.75rem 0;
+        font-size: 0.8rem;
+    }
+
+    .finding-evidence th, .finding-evidence td {
+        padding: 0.5rem 0.75rem;
+        text-align: left;
+        border: 1px solid var(--border);
+    }
+
+    .finding-evidence th {
+        background: rgba(255, 255, 255, 0.03);
+        color: var(--text-muted);
+        font-weight: 600;
+        font-size: 0.75rem;
+    }
+
+    .finding-evidence blockquote {
+        border-left: 3px solid var(--purple);
+        padding: 0.5rem 1rem;
+        margin: 0.75rem 0;
+        background: rgba(123, 45, 142, 0.06);
+        border-radius: 0 var(--radius) var(--radius) 0;
+        color: var(--text-muted);
+    }
+
+    .finding-evidence hr {
+        border: none;
+        border-top: 1px solid var(--border);
+        margin: 1.5rem 0;
+    }
+
+    .finding-evidence details {
+        margin: 0.75rem 0;
+        padding: 0.75rem;
+        background: rgba(255, 255, 255, 0.02);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+    }
+
+    .finding-evidence summary {
+        cursor: pointer;
+        font-weight: 600;
+        color: var(--purple-light);
+        font-size: 0.85rem;
+    }
+
+    /* ── Remediation Box ──────────────────────────── */
+    .finding-remediation {
+        margin-top: 1.25rem;
+        padding: 1.25rem;
+        background: rgba(74, 222, 128, 0.04);
+        border: 1px solid rgba(74, 222, 128, 0.15);
+        border-radius: var(--radius);
+    }
+
+    .finding-remediation h5 {
+        font-size: 0.78rem;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: var(--success);
+        font-weight: 700;
+        margin-bottom: 0.5rem;
+    }
+
+    .finding-remediation p, .finding-remediation div {
+        font-size: 0.85rem;
+        color: var(--text);
+        line-height: 1.7;
+    }
+
+    /* ── Phase Timeline ──────────────────────────── */
+    .phase-timeline {
+        display: flex;
+        height: 12px;
+        border-radius: 6px;
+        overflow: hidden;
+        margin-bottom: 1.5rem;
+        gap: 2px;
+    }
+
+    .phase-segment {
+        min-width: 4px;
+        border-radius: 4px;
+    }
+
+    .phase-color-0 { background: linear-gradient(90deg, #7B2D8E, #9b3ab1); }
+    .phase-color-1 { background: linear-gradient(90deg, #3B82F6, #60a5fa); }
+    .phase-color-2 { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
+    .phase-color-3 { background: linear-gradient(90deg, #10b981, #34d399); }
+    .phase-color-4 { background: linear-gradient(90deg, #6366f1, #818cf8); }
+
+    /* ── Phase Table ──────────────────────────── */
+    .phase-table-container {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        overflow: hidden;
+    }
+
+    .phase-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.82rem;
+    }
+
+    .phase-table thead {
+        background: rgba(255, 255, 255, 0.02);
+    }
+
+    .phase-table th {
+        padding: 0.7rem 1.25rem;
+        text-align: left;
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--text-dim);
+        font-weight: 600;
+        border-bottom: 1px solid var(--border);
+    }
+
+    .phase-table td {
+        padding: 0.65rem 1.25rem;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+    }
+
+    .phase-table tfoot td {
+        border-top: 1px solid var(--border);
+        border-bottom: none;
+    }
+
+    .phase-total-row td {
+        font-weight: 700;
+    }
+
+    .phase-name { color: var(--white); font-weight: 500; }
+    .phase-duration, .phase-agents, .phase-pct {
+        font-family: var(--font-mono);
+        color: var(--text-muted);
+        font-size: 0.8rem;
+    }
+    .phase-cost {
+        font-family: var(--font-mono);
+        color: var(--success);
+        font-weight: 600;
+        font-size: 0.8rem;
+    }
+
+    /* ── Appendix ──────────────────────────── */
+    .appendix-grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 1.5rem;
+    }
+
+    .appendix-card {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        padding: 1.5rem;
+    }
+
+    .appendix-card h4 {
+        font-size: 0.85rem;
+        font-weight: 700;
+        color: var(--white);
+        margin-bottom: 1rem;
+    }
+
+    .appendix-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.82rem;
+    }
+
+    .appendix-table th {
+        padding: 0.5rem 0.75rem;
+        text-align: left;
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--text-dim);
+        font-weight: 600;
+        border-bottom: 1px solid var(--border);
+    }
+
+    .appendix-table td {
+        padding: 0.5rem 0.75rem;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+        color: var(--text);
+    }
+
+    .appendix-label {
+        font-weight: 600;
+        color: var(--text-dim);
+        width: 120px;
+    }
+
+    .appendix-table code {
+        font-family: var(--font-mono);
+        font-size: 0.75rem;
+        color: var(--purple-light);
+        word-break: break-all;
+    }
+
+    .text-success { color: var(--success); }
+    .text-error { color: var(--error); }
+
+    /* ── Report Footer ──────────────────────────── */
+    .report-footer {
+        text-align: center;
+        padding: 2.5rem 0 1rem;
+        font-size: 0.78rem;
+        color: var(--text-dim);
+    }
+
+    .report-footer-line {
+        width: 100px;
+        height: 1px;
+        background: var(--border);
+        margin: 0 auto 1.5rem;
+    }
+
+    .report-footer p {
+        margin-bottom: 0.25rem;
+    }
+
+    .report-footer-date {
+        font-size: 0.72rem;
+        color: var(--text-faint);
+    }
+
+    .report-empty, .report-empty-findings {
+        text-align: center;
+        padding: 4rem 2rem;
+        color: var(--text-dim);
+    }
+
+    .report-empty h2 {
+        color: var(--white);
+        margin-bottom: 0.5rem;
+    }
+
+    .report-empty-findings p {
+        font-size: 0.9rem;
+        color: var(--text-muted);
+    }
+
+    /* ═══════════════════════════════════════════════════════════════════════════
+       Print Styles
+       ═══════════════════════════════════════════════════════════════════════════ */
+    @media print {
+        /* Hide interactive elements */
+        .report-nav { display: none !important; }
+        .finding-toc-link { display: none !important; }
+
+        /* White background for print */
+        body, html {
+            background: white !important;
+            color: #1a1a1a !important;
+        }
+
+        .report-page {
+            padding: 0 !important;
+            max-width: none !important;
+        }
+
+        /* Override dark theme */
+        .report-cover, .report-toc, .exec-summary-card, .severity-chart,
+        .category-card, .root-cause-card, .finding-card, .appendix-card,
+        .phase-table-container {
+            background: white !important;
+            border-color: #ddd !important;
+            color: #1a1a1a !important;
+        }
+
+        .report-cover-title, .report-section-title, .finding-card-title,
+        .finding-category-heading, h1, h2, h3, h4, h5 {
+            color: #1a1a1a !important;
+        }
+
+        .report-cover-badge {
+            color: #7B2D8E !important;
+            border-color: #7B2D8E !important;
+            background: #f3e8f9 !important;
+        }
+
+        .report-cover-target {
+            color: #7B2D8E !important;
+        }
+
+        .report-cover-date, .cover-meta-label, .risk-label,
+        .finding-meta-label, .section-intro, .toc-sublist li {
+            color: #666 !important;
+        }
+
+        .cover-meta-value, .severity-row-count, .phase-name {
+            color: #1a1a1a !important;
+        }
+
+        .finding-evidence, .finding-evidence p, .finding-evidence li,
+        .finding-evidence td {
+            color: #333 !important;
+        }
+
+        .finding-evidence strong {
+            color: #1a1a1a !important;
+        }
+
+        .finding-evidence pre {
+            background: #f5f5f5 !important;
+            border-color: #ddd !important;
+            color: #333 !important;
+        }
+
+        .finding-evidence pre code {
+            color: #333 !important;
+        }
+
+        .finding-evidence code {
+            background: #f0f0f0 !important;
+            color: #7B2D8E !important;
+        }
+
+        .finding-evidence blockquote {
+            background: #f8f5fa !important;
+            border-color: #7B2D8E !important;
+            color: #555 !important;
+        }
+
+        .finding-evidence th {
+            background: #f5f5f5 !important;
+            color: #666 !important;
+        }
+
+        .finding-evidence th, .finding-evidence td {
+            border-color: #ddd !important;
+        }
+
+        .finding-meta-grid {
+            background: #f9f9f9 !important;
+            border-color: #eee !important;
+        }
+
+        .finding-remediation {
+            background: #f0fdf4 !important;
+            border-color: #86efac !important;
+        }
+
+        .finding-remediation h5 {
+            color: #16a34a !important;
+        }
+
+        .verdict-critical { background: #fef2f2 !important; border-color: #ef4444 !important; color: #333 !important; }
+        .verdict-high { background: #fff7ed !important; border-color: #f97316 !important; color: #333 !important; }
+        .verdict-moderate { background: #fffbeb !important; border-color: #f59e0b !important; color: #333 !important; }
+        .verdict-clean { background: #f0fdf4 !important; border-color: #22c55e !important; color: #333 !important; }
+
+        /* Severity colors need to work on white */
+        .severity-row-label.critical, .sev-tag.critical, .sev-badge.critical { color: #dc2626 !important; }
+        .severity-row-label.high, .sev-tag.high, .sev-badge.high { color: #ea580c !important; }
+        .severity-row-label.medium, .sev-tag.medium, .sev-badge.medium { color: #ca8a04 !important; }
+        .severity-row-label.low, .sev-tag.low, .sev-badge.low { color: #2563eb !important; }
+        .severity-row-label.info, .sev-tag.info, .sev-badge.info { color: #64748b !important; }
+
+        .sev-tag, .sev-badge {
+            background: transparent !important;
+            border: 1px solid currentColor !important;
+        }
+
+        .report-risk-indicator {
+            background: transparent !important;
+        }
+
+        .report-risk-indicator.critical { border-color: #dc2626 !important; }
+        .report-risk-indicator.critical .risk-value { color: #dc2626 !important; }
+        .report-risk-indicator.high { border-color: #ea580c !important; }
+        .report-risk-indicator.high .risk-value { color: #ea580c !important; }
+        .report-risk-indicator.medium { border-color: #ca8a04 !important; }
+        .report-risk-indicator.medium .risk-value { color: #ca8a04 !important; }
+
+        .phase-table th, .phase-table td, .appendix-table th, .appendix-table td {
+            border-color: #ddd !important;
+            color: #333 !important;
+        }
+
+        .phase-table thead, .appendix-table thead {
+            background: #f5f5f5 !important;
+        }
+
+        .phase-cost, .text-success { color: #16a34a !important; }
+        .text-error { color: #dc2626 !important; }
+
+        .appendix-table code {
+            color: #7B2D8E !important;
+        }
+
+        .toc-list a, .top-findings-list a {
+            color: #7B2D8E !important;
+        }
+
+        .report-footer { color: #999 !important; }
+        .report-footer-line { background: #ddd !important; }
+
+        .severity-bar-track { background: #eee !important; }
+
+        .finding-badge.critical { background: rgba(220, 38, 38, 0.1) !important; color: #dc2626 !important; border: 1px solid rgba(220, 38, 38, 0.3) !important; }
+        .finding-badge.high { background: rgba(234, 88, 12, 0.1) !important; color: #ea580c !important; border: 1px solid rgba(234, 88, 12, 0.3) !important; }
+        .finding-badge.medium { background: rgba(202, 138, 4, 0.1) !important; color: #ca8a04 !important; border: 1px solid rgba(202, 138, 4, 0.3) !important; }
+        .finding-badge.low { background: rgba(37, 99, 235, 0.1) !important; color: #2563eb !important; border: 1px solid rgba(37, 99, 235, 0.3) !important; }
+
+        /* Page break rules */
+        .finding-card { page-break-inside: avoid; }
+        .report-section { page-break-before: auto; }
+        .report-cover { page-break-after: always; }
+        h2 { page-break-after: avoid; }
+
+        @page { margin: 2cm; }
+    }
+
+    /* ═══════════════════════════════════════════════════════════════════════════
+       Responsive
+       ═══════════════════════════════════════════════════════════════════════════ */
+    @media (max-width: 768px) {
+        .report-page { padding: 1rem; }
+        .report-cover { padding: 2rem 1rem; }
+        .report-cover-title { font-size: 1.5rem; }
+        .report-cover-meta { gap: 1.5rem; }
+        .finding-card { padding: 1.25rem; }
+        .category-grid { grid-template-columns: 1fr; }
+        .report-nav { padding: 0.75rem 1rem; }
+        .severity-row-label { width: 80px; font-size: 0.75rem; }
+        .finding-meta-item { flex-direction: column; gap: 0.2rem; }
+    }
+</style>

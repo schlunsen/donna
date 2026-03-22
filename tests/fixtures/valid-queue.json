@@ -1,0 +1,30 @@
+{
+  "vulnerabilities": [
+    {
+      "id": "SQLI-001",
+      "vulnerability_type": "SQLi",
+      "endpoint": "/api/users",
+      "method": "POST",
+      "confidence": "high",
+      "source_file": "controllers/userController.js",
+      "externally_exploitable": true,
+      "sink_function": "db.query",
+      "vulnerable_parameter": "username",
+      "sanitization_present": false,
+      "sanitization_bypass": null
+    },
+    {
+      "id": "SQLI-002",
+      "vulnerability_type": "SQLi",
+      "endpoint": "/api/search",
+      "method": "GET",
+      "confidence": "medium",
+      "source_file": "controllers/searchController.js",
+      "externally_exploitable": true,
+      "sink_function": "db.raw",
+      "vulnerable_parameter": "q",
+      "sanitization_present": true,
+      "sanitization_bypass": "double encoding bypasses regex filter"
+    }
+  ]
+}
