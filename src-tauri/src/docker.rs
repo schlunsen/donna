@@ -1,4 +1,4 @@
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 use tokio::process::Command;
 
 /// Path resolution for Docker on macOS GUI apps.

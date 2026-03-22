@@ -243,16 +243,16 @@ tauri-setup:
 
 # Run the desktop app in development mode
 tauri-dev:
-    npm run tauri:dev
+    PATH="$HOME/.cargo/bin:$PATH" cargo tauri dev
 
 # Build the desktop app for distribution
 tauri-build:
-    npm run tauri:build-sidecars
-    npm run tauri:build
+    node src-tauri/scripts/build-sidecars.mjs
+    PATH="$HOME/.cargo/bin:$PATH" cargo tauri build
 
 # Build only sidecar binaries (dashboard + worker)
 tauri-sidecars:
-    npm run tauri:build-sidecars
+    node src-tauri/scripts/build-sidecars.mjs
 
 # Generate app icons from a source PNG (e.g., just tauri-icons assets/logo.png)
 tauri-icons source:

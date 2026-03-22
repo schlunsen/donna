@@ -33,7 +33,6 @@
     "notification:allow-request-permission",
     "notification:allow-is-permission-granted",
 
-    "single-instance:default",
     "store:default",
     "dialog:default",
     "dialog:allow-open",
