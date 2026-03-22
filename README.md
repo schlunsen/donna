@@ -372,6 +372,12 @@ This tool **actively executes attacks** against target applications.
 
 ---
 
+## Acknowledgments
+
+Donna was originally inspired by and forked from [Shannon](https://github.com/keygraph/shannon) by [Keygraph](https://github.com/keygraph). Thank you to the Shannon team for the foundational work on AI-powered penetration testing.
+
+---
+
 ## License
 
 AGPL-3.0 — See [LICENSE](LICENSE) for details.
