@@ -233,16 +233,39 @@ async fn startup_sequence(app: &tauri::AppHandle) {
         }
     }
 
-    // Step 6: Wait briefly for dashboard to accept connections, then navigate
-    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-
+    // Step 6: Wait for the dashboard to accept HTTP connections, then navigate
     let url = format!("http://localhost:{}", port);
-    let _ = app.emit("startup-navigate", serde_json::json!({ "url": url }));
+    emit_progress(app, "worker", "done", "Waiting for dashboard to be ready...");
 
-    log::info!("Donna is ready!");
-    let _ = tauri_plugin_notification::NotificationExt::notification(app)
-        .builder()
-        .title("Donna")
-        .body("Donna is ready. Dashboard is running.")
-        .show();
+    let mut dashboard_ready = false;
+    for attempt in 1..=30 {
+        log::info!("Checking dashboard readiness (attempt {}/30)...", attempt);
+        match tokio::net::TcpStream::connect(format!("127.0.0.1:{}", port)).await {
+            Ok(_) => {
+                dashboard_ready = true;
+                log::info!("Dashboard is accepting connections on port {}", port);
+                break;
+            }
+            Err(_) => {
+                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            }
+        }
+    }
+
+    if dashboard_ready {
+        // Navigate the webview directly via JS eval (more reliable than events)
+        if let Some(window) = app.get_webview_window("main") {
+            let _ = window.eval(&format!("window.location.replace('{}');", url));
+        }
+
+        log::info!("Donna is ready!");
+        let _ = tauri_plugin_notification::NotificationExt::notification(app)
+            .builder()
+            .title("Donna")
+            .body("Donna is ready. Dashboard is running.")
+            .show();
+    } else {
+        emit_progress(app, "dashboard", "failed", "Dashboard didn't start in time");
+        log::error!("Dashboard failed to become ready within 30 seconds");
+    }
 }
