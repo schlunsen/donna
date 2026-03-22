@@ -90,11 +90,13 @@ const base = import.meta.env.BASE_URL;
       .hero::before {
         content: '';
         position: absolute;
-        top: -200px; left: 50%; transform: translateX(-50%);
-        width: 800px; height: 800px;
-        background: radial-gradient(circle, var(--purple-glow) 0%, transparent 70%);
-        opacity: 0.3;
+        bottom: 0; left: 0; right: 0;
+        height: 480px;
+        background: url('/donna/hero-bg.png') center bottom / cover no-repeat;
+        opacity: 0.5;
         pointer-events: none;
+        mask-image: linear-gradient(to top, rgba(0,0,0,0.6) 0%, transparent 80%);
+        -webkit-mask-image: linear-gradient(to top, rgba(0,0,0,0.6) 0%, transparent 80%);
       }
       .hero-eyebrow {
         font-size: 13px; text-transform: uppercase; letter-spacing: 3px;
@@ -234,6 +236,17 @@ const base = import.meta.env.BASE_URL;
       .cta-section {
         text-align: center;
         background: linear-gradient(180deg, var(--bg) 0%, var(--bg-surface) 100%);
+        position: relative;
+        overflow: hidden;
+      }
+      .cta-section::before {
+        content: '';
+        position: absolute;
+        top: 50%; left: 50%; transform: translate(-50%, -50%);
+        width: 500px; height: 500px;
+        background: url('/donna/feature-accent.png') center / contain no-repeat;
+        opacity: 0.08;
+        pointer-events: none;
       }
       .cta-section .section-title {
         background: linear-gradient(135deg, #fff 30%, var(--purple-light));
