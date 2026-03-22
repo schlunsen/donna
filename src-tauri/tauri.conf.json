@@ -6,7 +6,7 @@
   "build": {
     "beforeBuildCommand": "",
     "beforeDevCommand": "",
-    "frontendDist": "../dashboard/dist/client"
+    "frontendDist": "ui"
   },
   "app": {
     "withGlobalTauri": true,
@@ -20,7 +20,7 @@
         "center": true,
         "decorations": true,
         "resizable": true,
-        "visible": false
+        "visible": true
       }
     ],
     "trayIcon": {
@@ -30,7 +30,7 @@
       "tooltip": "Donna — AI Pentesting"
     },
     "security": {
-      "csp": "default-src 'self'; connect-src 'self' http://localhost:* ws://localhost:*; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'"
+      "csp": null
     }
   },
   "bundle": {

@@ -59,8 +59,19 @@ pub async fn is_docker_available() -> Result<bool, String> {
     Ok(output.status.success())
 }
 
+/// Check if Temporal is already reachable on port 7233 (from any source)
+async fn is_temporal_port_open() -> bool {
+    tokio::net::TcpStream::connect("127.0.0.1:7233").await.is_ok()
+}
+
 /// Start Docker Compose services (Temporal server)
 pub async fn compose_up(app: &AppHandle) -> Result<String, String> {
+    // If Temporal is already running (e.g., from a separate docker compose), skip startup
+    if is_temporal_port_open().await {
+        log::info!("Temporal is already running on port 7233 — skipping compose up");
+        return Ok("Temporal already running".to_string());
+    }
+
     let docker = docker_path();
     let compose_file = compose_file_path(app)?;
 
@@ -83,6 +94,11 @@ pub async fn compose_up(app: &AppHandle) -> Result<String, String> {
         Ok("Docker Compose started".to_string())
     } else {
         let stderr = String::from_utf8_lossy(&output.stderr);
+        // If port is already in use, Temporal is likely running from another source
+        if stderr.contains("port is already allocated") || stderr.contains("address already in use") {
+            log::info!("Port 7233 already in use — assuming Temporal is running");
+            return Ok("Temporal already running (external)".to_string());
+        }
         Err(format!("Docker Compose failed: {}", stderr))
     }
 }

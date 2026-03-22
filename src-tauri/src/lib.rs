@@ -3,7 +3,7 @@ mod sidecar;
 mod tray;
 
 use serde::{Deserialize, Serialize};
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 
 /// Application state shared across commands
 pub struct AppState {
@@ -140,18 +140,36 @@ pub fn run() {
         .expect("error while running Donna desktop app");
 }
 
+/// Emit a startup progress event to the loading screen
+fn emit_progress(app: &tauri::AppHandle, step: &str, state: &str, message: &str) {
+    let _ = app.emit("startup-progress", serde_json::json!({
+        "step": step,
+        "state": state,
+        "message": message,
+    }));
+}
+
 /// Startup sequence: Docker → Temporal → Dashboard → Worker
 async fn startup_sequence(app: &tauri::AppHandle) {
     log::info!("Starting Donna desktop app...");
 
+    // Show the loading screen immediately
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+
     let state = app.state::<AppState>();
 
     // Step 1: Check Docker
+    emit_progress(app, "docker", "active", "Checking Docker...");
     match docker::is_docker_available().await {
         Ok(true) => {
+            emit_progress(app, "docker", "done", "Docker is available");
             log::info!("Docker is available");
         }
         Ok(false) | Err(_) => {
+            emit_progress(app, "docker", "failed", "Docker is not running. Please start Docker.");
             log::warn!("Docker is not available — some features will be limited");
             let _ = tauri_plugin_notification::NotificationExt::notification(app)
                 .builder()
@@ -163,12 +181,14 @@ async fn startup_sequence(app: &tauri::AppHandle) {
     }
 
     // Step 2: Start Docker Compose (Temporal)
+    emit_progress(app, "temporal", "active", "Starting Temporal server...");
     match docker::compose_up(app).await {
         Ok(_) => {
             state.docker_running.store(true, std::sync::atomic::Ordering::Relaxed);
             log::info!("Docker Compose services started");
         }
         Err(e) => {
+            emit_progress(app, "temporal", "failed", &format!("Failed to start Temporal: {}", e));
             log::error!("Failed to start Docker Compose: {}", e);
             return;
         }
@@ -176,31 +196,48 @@ async fn startup_sequence(app: &tauri::AppHandle) {
 
     // Step 3: Wait for Temporal to be healthy
     match docker::wait_for_temporal(app).await {
-        Ok(_) => log::info!("Temporal server is healthy"),
-        Err(e) => log::warn!("Temporal health check failed: {}", e),
+        Ok(_) => {
+            emit_progress(app, "temporal", "done", "Temporal is healthy");
+            log::info!("Temporal server is healthy");
+        }
+        Err(e) => {
+            emit_progress(app, "temporal", "failed", &format!("Temporal health check failed: {}", e));
+            log::warn!("Temporal health check failed: {}", e);
+        }
     }
 
     // Step 4: Start dashboard sidecar
     let port = state.dashboard_port;
+    emit_progress(app, "dashboard", "active", "Starting dashboard...");
     match sidecar::start_dashboard(app, port).await {
-        Ok(_) => log::info!("Dashboard started on port {}", port),
-        Err(e) => log::error!("Failed to start dashboard: {}", e),
+        Ok(_) => {
+            emit_progress(app, "dashboard", "done", &format!("Dashboard on port {}", port));
+            log::info!("Dashboard started on port {}", port);
+        }
+        Err(e) => {
+            emit_progress(app, "dashboard", "failed", &format!("Dashboard failed: {}", e));
+            log::error!("Failed to start dashboard: {}", e);
+        }
     }
 
     // Step 5: Start worker sidecar
+    emit_progress(app, "worker", "active", "Starting worker...");
     match sidecar::start_worker(app).await {
-        Ok(_) => log::info!("Temporal worker started"),
-        Err(e) => log::error!("Failed to start worker: {}", e),
+        Ok(_) => {
+            emit_progress(app, "worker", "done", "Worker started");
+            log::info!("Temporal worker started");
+        }
+        Err(e) => {
+            emit_progress(app, "worker", "failed", &format!("Worker failed: {}", e));
+            log::error!("Failed to start worker: {}", e);
+        }
     }
 
-    // Step 6: Show the main window pointing at the dashboard
-    if let Some(window) = app.get_webview_window("main") {
-        let url = format!("http://localhost:{}", port);
-        // Tauri v2 doesn't have window.navigate() — use JS eval instead
-        let _ = window.eval(&format!("window.location.replace('{}');", url));
-        let _ = window.show();
-        let _ = window.set_focus();
-    }
+    // Step 6: Wait briefly for dashboard to accept connections, then navigate
+    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+
+    let url = format!("http://localhost:{}", port);
+    let _ = app.emit("startup-navigate", serde_json::json!({ "url": url }));
 
     log::info!("Donna is ready!");
     let _ = tauri_plugin_notification::NotificationExt::notification(app)
