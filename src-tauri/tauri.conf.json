@@ -43,6 +43,9 @@
       "icons/icon.ico"
     ],
     "targets": "all",
+    "resources": [
+      "docker-compose.tauri.yml"
+    ],
     "externalBin": [
       "sidecars/donna-dashboard",
       "sidecars/donna-worker"

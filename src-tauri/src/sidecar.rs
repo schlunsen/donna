@@ -1,5 +1,6 @@
 use tauri::AppHandle;
 use tauri_plugin_shell::ShellExt;
+use tauri_plugin_shell::process::CommandEvent;
 
 /// Start the Astro SSR dashboard as a sidecar process
 pub async fn start_dashboard(app: &AppHandle, port: u16) -> Result<(), String> {
@@ -18,7 +19,6 @@ pub async fn start_dashboard(app: &AppHandle, port: u16) -> Result<(), String> {
     // Monitor sidecar output in background
     let app_handle = app.clone();
     tauri::async_runtime::spawn(async move {
-        use tauri_plugin_shell::process::CommandEvent;
         while let Some(event) = rx.recv().await {
             match event {
                 CommandEvent::Stdout(line) => {
@@ -35,13 +35,11 @@ pub async fn start_dashboard(app: &AppHandle, port: u16) -> Result<(), String> {
                         payload.code,
                         payload.signal
                     );
-                    // Notify user of crash
                     let _ = tauri_plugin_notification::NotificationExt::notification(&app_handle)
                         .builder()
                         .title("Donna")
-                        .body("Dashboard process crashed. Restarting...")
+                        .body("Dashboard process crashed. Restart Donna to recover.")
                         .show();
-                    // TODO: implement automatic restart with backoff
                     break;
                 }
                 _ => {}
@@ -49,37 +47,10 @@ pub async fn start_dashboard(app: &AppHandle, port: u16) -> Result<(), String> {
         }
     });
 
-    // Wait a moment for the dashboard to start
-    tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+    // Wait for the dashboard to start accepting connections
+    wait_for_port(port, 15).await?;
 
-    // Verify dashboard is responding
-    let check = std::process::Command::new("curl")
-        .args([
-            "-s",
-            "-o",
-            "/dev/null",
-            "-w",
-            "%{http_code}",
-            &format!("http://127.0.0.1:{}", port),
-        ])
-        .output();
-
-    match check {
-        Ok(output) if output.status.success() => {
-            let code = String::from_utf8_lossy(&output.stdout);
-            if code.starts_with('2') || code.starts_with('3') {
-                log::info!("Dashboard is responding on port {}", port);
-                Ok(())
-            } else {
-                log::warn!("Dashboard returned HTTP {}, may still be starting...", code);
-                Ok(()) // Don't fail — it may just need more time
-            }
-        }
-        _ => {
-            log::warn!("Could not verify dashboard — it may still be starting");
-            Ok(())
-        }
-    }
+    Ok(())
 }
 
 /// Start the Temporal worker as a sidecar process
@@ -98,7 +69,6 @@ pub async fn start_worker(app: &AppHandle) -> Result<(), String> {
     // Monitor worker output in background
     let app_handle = app.clone();
     tauri::async_runtime::spawn(async move {
-        use tauri_plugin_shell::process::CommandEvent;
         while let Some(event) = rx.recv().await {
             match event {
                 CommandEvent::Stdout(line) => {
@@ -155,7 +125,7 @@ pub async fn start_worker(app: &AppHandle) -> Result<(), String> {
                     let _ = tauri_plugin_notification::NotificationExt::notification(&app_handle)
                         .builder()
                         .title("Donna")
-                        .body("Worker process crashed. Restarting...")
+                        .body("Worker process crashed. Restart Donna to recover.")
                         .show();
                     break;
                 }
@@ -167,7 +137,10 @@ pub async fn start_worker(app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-/// Start a pentest scan by invoking the donna CLI through the worker
+/// Start a pentest scan via the Temporal client.
+///
+/// Scans are initiated by signaling the Temporal server (which the already-running
+/// worker picks up), NOT by spawning a new worker process.
 pub async fn start_scan(
     app: &AppHandle,
     url: &str,
@@ -176,27 +149,49 @@ pub async fn start_scan(
 ) -> Result<String, String> {
     let shell = app.shell();
 
+    // Use the Temporal client entry point (client.js), not the worker
+    // The client connects to Temporal and starts a workflow that the worker executes
     let mut args = vec![
-        "start".to_string(),
-        format!("URL={}", url),
-        format!("REPO={}", repo),
+        "dist/temporal/client.js".to_string(),
+        url.to_string(),
+        repo.to_string(),
     ];
 
     if let Some(config_path) = config {
-        args.push(format!("CONFIG={}", config_path));
+        args.push(format!("--config={}", config_path));
     }
 
+    // Run via node (or a bundled client sidecar in the future)
     let output = shell
-        .sidecar("donna-worker")
-        .map_err(|e| format!("Failed to create scan sidecar: {}", e))?
+        .command("node")
         .args(args)
         .output()
         .await
-        .map_err(|e| format!("Failed to run scan: {}", e))?;
+        .map_err(|e| format!("Failed to start scan: {}", e))?;
 
     if output.status.success() {
         Ok(String::from_utf8_lossy(&output.stdout).to_string())
     } else {
         Err(String::from_utf8_lossy(&output.stderr).to_string())
     }
+}
+
+/// Wait for a TCP port to become reachable (cross-platform, no curl dependency)
+async fn wait_for_port(port: u16, timeout_secs: u64) -> Result<(), String> {
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(timeout_secs);
+
+    while tokio::time::Instant::now() < deadline {
+        match tokio::net::TcpStream::connect(format!("127.0.0.1:{}", port)).await {
+            Ok(_) => {
+                log::info!("Port {} is accepting connections", port);
+                return Ok(());
+            }
+            Err(_) => {
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            }
+        }
+    }
+
+    log::warn!("Port {} did not become available within {}s — continuing anyway", port, timeout_secs);
+    Ok(()) // Don't fail — the sidecar may just need more time
 }

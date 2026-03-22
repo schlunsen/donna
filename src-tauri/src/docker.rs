@@ -1,5 +1,5 @@
-use std::process::Command;
 use tauri::AppHandle;
+use tokio::process::Command;
 
 /// Path resolution for Docker on macOS GUI apps.
 /// GUI apps don't inherit the shell PATH, so Docker may not be found.
@@ -21,9 +21,9 @@ fn docker_path() -> String {
     "docker".to_string()
 }
 
-/// Resolve the docker-compose.yml path relative to the app's resource dir
+/// Resolve the docker-compose.tauri.yml path relative to the app's resource dir
 fn compose_file_path(app: &AppHandle) -> Result<String, String> {
-    // In development, use the project root docker-compose.yml
+    // In development, use the project-local compose file
     // In production, it's bundled as a resource
     let resource_dir = app
         .path()
@@ -36,7 +36,12 @@ fn compose_file_path(app: &AppHandle) -> Result<String, String> {
     if compose_path.exists() {
         Ok(compose_path.to_string_lossy().to_string())
     } else {
-        // Fallback: try the app's working directory
+        // Fallback: try src-tauri/ directory (development mode)
+        let dev_path = "src-tauri/docker-compose.tauri.yml";
+        if std::path::Path::new(dev_path).exists() {
+            return Ok(dev_path.to_string());
+        }
+        // Last resort: use the root docker-compose.yml
         Ok("docker-compose.yml".to_string())
     }
 }
@@ -48,6 +53,7 @@ pub async fn is_docker_available() -> Result<bool, String> {
     let output = Command::new(&docker)
         .args(["info", "--format", "{{.ServerVersion}}"])
         .output()
+        .await
         .map_err(|e| format!("Failed to run docker: {}", e))?;
 
     Ok(output.status.success())
@@ -70,6 +76,7 @@ pub async fn compose_up(app: &AppHandle) -> Result<String, String> {
             "temporal", // Only start Temporal — dashboard and worker run as sidecars
         ])
         .output()
+        .await
         .map_err(|e| format!("Failed to run docker compose up: {}", e))?;
 
     if output.status.success() {
@@ -88,6 +95,7 @@ pub async fn compose_down(app: &AppHandle) -> Result<String, String> {
     let output = Command::new(&docker)
         .args(["compose", "-f", &compose_file, "down"])
         .output()
+        .await
         .map_err(|e| format!("Failed to run docker compose down: {}", e))?;
 
     if output.status.success() {
@@ -99,15 +107,21 @@ pub async fn compose_down(app: &AppHandle) -> Result<String, String> {
 }
 
 /// Wait for Temporal server to become healthy (up to 60 seconds)
-pub async fn wait_for_temporal(_app: &AppHandle) -> Result<(), String> {
+pub async fn wait_for_temporal(app: &AppHandle) -> Result<(), String> {
     let docker = docker_path();
+    let compose_file = compose_file_path(app)?;
 
     for attempt in 1..=12 {
-        log::info!("Waiting for Temporal to be healthy (attempt {}/12)...", attempt);
+        log::info!(
+            "Waiting for Temporal to be healthy (attempt {}/12)...",
+            attempt
+        );
 
         let output = Command::new(&docker)
             .args([
                 "compose",
+                "-f",
+                &compose_file,
                 "exec",
                 "temporal",
                 "temporal",
@@ -118,6 +132,7 @@ pub async fn wait_for_temporal(_app: &AppHandle) -> Result<(), String> {
                 "localhost:7233",
             ])
             .output()
+            .await
             .map_err(|e| format!("Health check command failed: {}", e))?;
 
         if output.status.success() {

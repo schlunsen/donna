@@ -16,7 +16,6 @@
     "core:window:allow-toggle-maximize",
 
     "shell:default",
-    "shell:allow-spawn",
     "shell:allow-execute",
     "shell:allow-kill",
     {
@@ -24,7 +23,8 @@
       "allow": [
         { "name": "donna-dashboard", "sidecar": true },
         { "name": "donna-worker", "sidecar": true },
-        { "name": "docker", "args": true }
+        { "name": "docker", "args": true },
+        { "name": "node", "args": true }
       ]
     },
 

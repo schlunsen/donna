@@ -48,7 +48,8 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>
                     // Navigate to the scan start page
                     let state = app.state::<crate::AppState>();
                     let url = format!("http://localhost:{}/scan/new", state.dashboard_port);
-                    let _ = window.navigate(url.parse().unwrap());
+                    // Tauri v2 doesn't have window.navigate() — use JS eval instead
+                    let _ = window.eval(&format!("window.location.replace('{}');", url));
                 }
             }
             "stop_docker" => {

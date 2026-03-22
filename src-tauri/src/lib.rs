@@ -196,7 +196,8 @@ async fn startup_sequence(app: &tauri::AppHandle) {
     // Step 6: Show the main window pointing at the dashboard
     if let Some(window) = app.get_webview_window("main") {
         let url = format!("http://localhost:{}", port);
-        let _ = window.navigate(url.parse().unwrap());
+        // Tauri v2 doesn't have window.navigate() — use JS eval instead
+        let _ = window.eval(&format!("window.location.replace('{}');", url));
         let _ = window.show();
         let _ = window.set_focus();
     }
