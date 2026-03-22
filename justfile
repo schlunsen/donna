@@ -207,7 +207,7 @@ session workspace:
 
 # ─── Repo Management ───────────────────────────────────────────────────────────
 
-# Import a local directory into ./repos/ for scanning (e.g., just import ~/jobs/igl/clovr.cat)
+# Import a local directory into ./repos/ for scanning (e.g., just import ~/projects/my-app)
 import path name="":
     #!/usr/bin/env bash
     src="{{path}}"

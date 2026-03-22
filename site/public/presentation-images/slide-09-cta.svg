@@ -1,39 +1,106 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" fill="none">
   <defs>
-    <radialGradient id="victoryGlow" cx="50%" cy="45%" r="50%">
-      <stop offset="0%" stop-color="#4ADE80" stop-opacity="0.15"/>
-      <stop offset="40%" stop-color="#7B2D8E" stop-opacity="0.1"/>
+    <radialGradient id="victoryGlow" cx="50%" cy="42%" r="55%">
+      <stop offset="0%" stop-color="#4ADE80" stop-opacity="0.18"/>
+      <stop offset="40%" stop-color="#7B2D8E" stop-opacity="0.12"/>
       <stop offset="100%" stop-color="#0a0a14" stop-opacity="0"/>
     </radialGradient>
-    <radialGradient id="shieldFill" cx="50%" cy="45%" r="50%">
-      <stop offset="0%" stop-color="#7B2D8E" stop-opacity="0.15"/>
+    <radialGradient id="shieldFill" cx="50%" cy="40%" r="50%">
+      <stop offset="0%" stop-color="#7B2D8E" stop-opacity="0.18"/>
       <stop offset="100%" stop-color="#0a0a14" stop-opacity="0"/>
     </radialGradient>
+    <linearGradient id="shieldStroke" x1="50%" y1="0%" x2="50%" y2="100%">
+      <stop offset="0%" stop-color="#9B4DCA" stop-opacity="0.9"/>
+      <stop offset="100%" stop-color="#4ADE80" stop-opacity="0.6"/>
+    </linearGradient>
+    <filter id="successglow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="4" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+    <filter id="burstglow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="2"/>
+    </filter>
   </defs>
+
   <!-- Background glow -->
-  <ellipse cx="200" cy="190" rx="190" ry="190" fill="url(#victoryGlow)"/>
-  <!-- Shield - solid and strong -->
+  <ellipse cx="200" cy="190" rx="200" ry="200" fill="url(#victoryGlow)"/>
+
+  <!-- Outer energy rings -->
+  <ellipse cx="200" cy="195" rx="180" ry="185" stroke="#7B2D8E" stroke-width="0.6" opacity="0.15" stroke-dasharray="4 10"/>
+  <ellipse cx="200" cy="195" rx="165" ry="170" stroke="#4ADE80" stroke-width="0.4" opacity="0.1" stroke-dasharray="2 12"/>
+
+  <!-- Rotating orbit ring -->
+  <ellipse cx="200" cy="195" rx="155" ry="160" stroke="#C090C0" stroke-width="0.3" opacity="0.12" stroke-dasharray="6 8">
+    <animateTransform attributeName="transform" type="rotate" from="0 200 195" to="360 200 195" dur="40s" repeatCount="indefinite"/>
+  </ellipse>
+
+  <!-- Shield outer glow -->
+  <path d="M200 35 L335 103 L335 225 C335 298 200 352 200 352 C200 352 65 298 65 225 L65 103 Z"
+        stroke="#4ADE80" stroke-width="3" opacity="0.08" filter="url(#burstglow)"/>
+
+  <!-- Shield — solid and strong -->
   <path d="M200 40 L330 105 L330 220 C330 290 200 345 200 345 C200 345 70 290 70 220 L70 105 Z"
-        stroke="#7B2D8E" stroke-width="2.5" opacity="0.8" fill="url(#shieldFill)"/>
-  <path d="M200 55 L320 115 L320 215 C320 280 200 330 200 330 C200 330 80 280 80 215 L80 115 Z"
-        stroke="#C090C0" stroke-width="1" opacity="0.35"/>
-  <!-- Big checkmark -->
-  <path d="M155 190 L185 220 L250 150" stroke="#4ADE80" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" opacity="0.8"/>
-  <!-- Energy rings around shield -->
-  <ellipse cx="200" cy="200" rx="170" ry="175" stroke="#7B2D8E" stroke-width="0.8" opacity="0.2" stroke-dasharray="6 8"/>
-  <ellipse cx="200" cy="200" rx="185" ry="190" stroke="#C090C0" stroke-width="0.5" opacity="0.15" stroke-dasharray="4 10"/>
-  <!-- Radiating lines (success burst) -->
-  <line x1="200" y1="30" x2="200" y2="10" stroke="#4ADE80" stroke-width="1" opacity="0.3"/>
-  <line x1="340" y1="100" x2="355" y2="88" stroke="#4ADE80" stroke-width="1" opacity="0.25"/>
-  <line x1="60" y1="100" x2="45" y2="88" stroke="#4ADE80" stroke-width="1" opacity="0.25"/>
-  <line x1="350" y1="220" x2="370" y2="225" stroke="#4ADE80" stroke-width="1" opacity="0.2"/>
-  <line x1="50" y1="220" x2="30" y2="225" stroke="#4ADE80" stroke-width="1" opacity="0.2"/>
-  <!-- Sparkle dots -->
-  <circle cx="200" cy="5" r="2" fill="#4ADE80" opacity="0.5"/>
-  <circle cx="360" cy="85" r="2" fill="#4ADE80" opacity="0.4"/>
-  <circle cx="40" cy="85" r="2" fill="#4ADE80" opacity="0.4"/>
-  <circle cx="375" cy="230" r="1.5" fill="#C090C0" opacity="0.3"/>
-  <circle cx="25" cy="230" r="1.5" fill="#C090C0" opacity="0.3"/>
-  <circle cx="150" cy="365" r="1.5" fill="#4ADE80" opacity="0.3"/>
-  <circle cx="250" cy="365" r="1.5" fill="#4ADE80" opacity="0.3"/>
+        stroke="url(#shieldStroke)" stroke-width="2.5" opacity="0.8" fill="url(#shieldFill)"/>
+
+  <!-- Shield inner border -->
+  <path d="M200 58 L318 118 L318 215 C318 278 200 328 200 328 C200 328 82 278 82 215 L82 118 Z"
+        stroke="#C090C0" stroke-width="0.8" opacity="0.25"/>
+
+  <!-- Shield highlight (subtle sheen) -->
+  <path d="M200 58 L150 80 L82 118 L82 180" stroke="#C090C0" stroke-width="0.4" opacity="0.1" fill="none"/>
+
+  <!-- Big checkmark with glow -->
+  <path d="M152 192 L184 224 L254 148" stroke="#4ADE80" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" opacity="0.15" filter="url(#successglow)"/>
+  <path d="M155 190 L185 220 L250 150" stroke="#4ADE80" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" opacity="0.85" filter="url(#successglow)"/>
+
+  <!-- Success burst rays -->
+  <g opacity="0.25">
+    <line x1="200" y1="28" x2="200" y2="8" stroke="#4ADE80" stroke-width="1.5" stroke-linecap="round"/>
+    <line x1="340" y1="98" x2="358" y2="84" stroke="#4ADE80" stroke-width="1.2" stroke-linecap="round"/>
+    <line x1="60" y1="98" x2="42" y2="84" stroke="#4ADE80" stroke-width="1.2" stroke-linecap="round"/>
+    <line x1="345" y1="220" x2="365" y2="226" stroke="#4ADE80" stroke-width="1" stroke-linecap="round"/>
+    <line x1="55" y1="220" x2="35" y2="226" stroke="#4ADE80" stroke-width="1" stroke-linecap="round"/>
+    <line x1="275" y1="345" x2="285" y2="362" stroke="#4ADE80" stroke-width="0.8" stroke-linecap="round"/>
+    <line x1="125" y1="345" x2="115" y2="362" stroke="#4ADE80" stroke-width="0.8" stroke-linecap="round"/>
+  </g>
+
+  <!-- Secondary burst (shorter rays) -->
+  <g opacity="0.15">
+    <line x1="245" y1="42" x2="260" y2="25" stroke="#C090C0" stroke-width="0.8" stroke-linecap="round"/>
+    <line x1="155" y1="42" x2="140" y2="25" stroke="#C090C0" stroke-width="0.8" stroke-linecap="round"/>
+    <line x1="348" y1="160" x2="368" y2="155" stroke="#C090C0" stroke-width="0.8" stroke-linecap="round"/>
+    <line x1="52" y1="160" x2="32" y2="155" stroke="#C090C0" stroke-width="0.8" stroke-linecap="round"/>
+  </g>
+
+  <!-- Sparkle dots with animation -->
+  <circle cx="200" cy="4" r="2.5" fill="#4ADE80" opacity="0.5">
+    <animate attributeName="opacity" values="0.5;0.2;0.5" dur="2s" repeatCount="indefinite"/>
+  </circle>
+  <circle cx="365" cy="80" r="2.5" fill="#4ADE80" opacity="0.45">
+    <animate attributeName="opacity" values="0.45;0.15;0.45" dur="2.5s" repeatCount="indefinite"/>
+  </circle>
+  <circle cx="35" cy="80" r="2.5" fill="#4ADE80" opacity="0.45">
+    <animate attributeName="opacity" values="0.45;0.15;0.45" dur="2.5s" begin="0.5s" repeatCount="indefinite"/>
+  </circle>
+  <circle cx="372" cy="230" r="2" fill="#C090C0" opacity="0.3">
+    <animate attributeName="opacity" values="0.3;0.1;0.3" dur="3s" repeatCount="indefinite"/>
+  </circle>
+  <circle cx="28" cy="230" r="2" fill="#C090C0" opacity="0.3">
+    <animate attributeName="opacity" values="0.3;0.1;0.3" dur="3s" begin="1s" repeatCount="indefinite"/>
+  </circle>
+  <circle cx="150" cy="370" r="2" fill="#4ADE80" opacity="0.35"/>
+  <circle cx="250" cy="370" r="2" fill="#4ADE80" opacity="0.35"/>
+
+  <!-- Orbiting protection dots -->
+  <circle r="2" fill="#4ADE80" opacity="0.4">
+    <animateMotion dur="15s" repeatCount="indefinite" path="M200,20 A180,180 0 1,1 199,20 Z"/>
+  </circle>
+  <circle r="1.5" fill="#C090C0" opacity="0.3">
+    <animateMotion dur="20s" begin="5s" repeatCount="indefinite" path="M200,20 A180,180 0 1,1 199,20 Z"/>
+  </circle>
+
+  <!-- Status badge at bottom -->
+  <rect x="155" y="370" width="90" height="18" rx="9" stroke="#4ADE80" stroke-width="0.8" opacity="0.3" fill="#4ADE80" fill-opacity="0.05"/>
+  <circle cx="170" cy="379" r="3" fill="#4ADE80" opacity="0.6"/>
+  <text x="200" y="383" text-anchor="middle" fill="#4ADE80" font-size="8" font-family="monospace" opacity="0.5">SECURED</text>
 </svg>

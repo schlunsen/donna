@@ -1,63 +1,131 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 300" fill="none">
   <defs>
     <linearGradient id="flow" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#60A5FA" stop-opacity="0.6"/>
-      <stop offset="50%" stop-color="#7B2D8E" stop-opacity="0.6"/>
-      <stop offset="100%" stop-color="#4ADE80" stop-opacity="0.6"/>
+      <stop offset="0%" stop-color="#60A5FA" stop-opacity="0.7"/>
+      <stop offset="33%" stop-color="#FBBF24" stop-opacity="0.5"/>
+      <stop offset="66%" stop-color="#F87171" stop-opacity="0.5"/>
+      <stop offset="100%" stop-color="#4ADE80" stop-opacity="0.7"/>
     </linearGradient>
     <radialGradient id="ng1" cx="50%" cy="50%" r="50%">
-      <stop offset="0%" stop-color="#60A5FA" stop-opacity="0.2"/>
+      <stop offset="0%" stop-color="#60A5FA" stop-opacity="0.25"/>
       <stop offset="100%" stop-color="#0a0a14" stop-opacity="0"/>
     </radialGradient>
     <radialGradient id="ng2" cx="50%" cy="50%" r="50%">
-      <stop offset="0%" stop-color="#FBBF24" stop-opacity="0.2"/>
+      <stop offset="0%" stop-color="#FBBF24" stop-opacity="0.25"/>
       <stop offset="100%" stop-color="#0a0a14" stop-opacity="0"/>
     </radialGradient>
     <radialGradient id="ng3" cx="50%" cy="50%" r="50%">
-      <stop offset="0%" stop-color="#F87171" stop-opacity="0.2"/>
+      <stop offset="0%" stop-color="#F87171" stop-opacity="0.25"/>
       <stop offset="100%" stop-color="#0a0a14" stop-opacity="0"/>
     </radialGradient>
     <radialGradient id="ng4" cx="50%" cy="50%" r="50%">
-      <stop offset="0%" stop-color="#4ADE80" stop-opacity="0.2"/>
+      <stop offset="0%" stop-color="#4ADE80" stop-opacity="0.25"/>
       <stop offset="100%" stop-color="#0a0a14" stop-opacity="0"/>
     </radialGradient>
+    <filter id="nodeglow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
   </defs>
-  <!-- Flow line -->
-  <line x1="140" y1="150" x2="560" y2="150" stroke="url(#flow)" stroke-width="1.5" opacity="0.4"/>
-  <!-- Flow arrows -->
-  <path d="M220 150 L235 143 L235 157 Z" fill="#60A5FA" opacity="0.3"/>
-  <path d="M370 150 L385 143 L385 157 Z" fill="#7B2D8E" opacity="0.3"/>
-  <path d="M520 150 L535 143 L535 157 Z" fill="#4ADE80" opacity="0.3"/>
-  <!-- Node 1 - Recon -->
-  <ellipse cx="100" cy="150" rx="60" ry="60" fill="url(#ng1)"/>
-  <circle cx="100" cy="150" r="35" stroke="#60A5FA" stroke-width="1.5" opacity="0.6"/>
-  <circle cx="100" cy="150" r="8" fill="#60A5FA" opacity="0.5"/>
-  <circle cx="100" cy="150" r="20" stroke="#60A5FA" stroke-width="0.5" stroke-dasharray="4 3" opacity="0.3"/>
-  <!-- Node 2 - Analysis -->
-  <ellipse cx="280" cy="150" rx="60" ry="60" fill="url(#ng2)"/>
-  <circle cx="280" cy="150" r="35" stroke="#FBBF24" stroke-width="1.5" opacity="0.6"/>
-  <circle cx="280" cy="150" r="8" fill="#FBBF24" opacity="0.5"/>
-  <path d="M265 160 L275 140 L285 155 L295 135" stroke="#FBBF24" stroke-width="1.2" opacity="0.5" stroke-linecap="round"/>
-  <!-- Node 3 - Exploit -->
-  <ellipse cx="440" cy="150" rx="60" ry="60" fill="url(#ng3)"/>
-  <circle cx="440" cy="150" r="35" stroke="#F87171" stroke-width="1.5" opacity="0.6"/>
-  <circle cx="440" cy="150" r="8" fill="#F87171" opacity="0.5"/>
-  <path d="M440 135 L440 165 M428 150 L452 150" stroke="#F87171" stroke-width="1.2" opacity="0.5" stroke-linecap="round"/>
-  <!-- Node 4 - Report -->
-  <ellipse cx="600" cy="150" rx="60" ry="60" fill="url(#ng4)"/>
-  <circle cx="600" cy="150" r="35" stroke="#4ADE80" stroke-width="1.5" opacity="0.6"/>
-  <circle cx="600" cy="150" r="8" fill="#4ADE80" opacity="0.5"/>
-  <path d="M590 140 L597 148 L612 133" stroke="#4ADE80" stroke-width="1.5" opacity="0.5" stroke-linecap="round"/>
+
+  <!-- Flow line with gradient -->
+  <line x1="140" y1="150" x2="560" y2="150" stroke="url(#flow)" stroke-width="2" opacity="0.5"/>
+
+  <!-- Animated data packets traveling the flow -->
+  <circle r="3" fill="#60A5FA" opacity="0.6">
+    <animateMotion dur="4s" repeatCount="indefinite" path="M140,150 L560,150"/>
+    <animate attributeName="opacity" values="0.6;0.2;0.6" dur="4s" repeatCount="indefinite"/>
+  </circle>
+  <circle r="2" fill="#4ADE80" opacity="0.4">
+    <animateMotion dur="4s" begin="2s" repeatCount="indefinite" path="M140,150 L560,150"/>
+    <animate attributeName="opacity" values="0.4;0.1;0.4" dur="4s" begin="2s" repeatCount="indefinite"/>
+  </circle>
+
+  <!-- Flow direction arrows -->
+  <path d="M215 150 L228 143 L228 157 Z" fill="#60A5FA" opacity="0.35"/>
+  <path d="M365 150 L378 143 L378 157 Z" fill="#FBBF24" opacity="0.3"/>
+  <path d="M515 150 L528 143 L528 157 Z" fill="#4ADE80" opacity="0.3"/>
+
+  <!-- ===== Node 1 — Recon (radar/scan) ===== -->
+  <ellipse cx="100" cy="150" rx="65" ry="65" fill="url(#ng1)"/>
+  <circle cx="100" cy="150" r="40" stroke="#60A5FA" stroke-width="1.5" opacity="0.6" filter="url(#nodeglow)"/>
+  <!-- Radar sweep -->
+  <circle cx="100" cy="150" r="25" stroke="#60A5FA" stroke-width="0.5" stroke-dasharray="4 4" opacity="0.3"/>
+  <circle cx="100" cy="150" r="15" stroke="#60A5FA" stroke-width="0.5" opacity="0.2"/>
+  <!-- Radar line sweeping -->
+  <line x1="100" y1="150" x2="100" y2="112" stroke="#60A5FA" stroke-width="1.2" opacity="0.6">
+    <animateTransform attributeName="transform" type="rotate" from="0 100 150" to="360 100 150" dur="3s" repeatCount="indefinite"/>
+  </line>
+  <!-- Blips -->
+  <circle cx="115" cy="135" r="2.5" fill="#60A5FA" opacity="0.6"/>
+  <circle cx="88" cy="162" r="2" fill="#60A5FA" opacity="0.5"/>
+  <circle cx="108" cy="158" r="1.5" fill="#60A5FA" opacity="0.4"/>
+  <!-- Crosshair -->
+  <line x1="100" y1="142" x2="100" y2="146" stroke="#60A5FA" stroke-width="0.8" opacity="0.4"/>
+  <line x1="100" y1="154" x2="100" y2="158" stroke="#60A5FA" stroke-width="0.8" opacity="0.4"/>
+  <line x1="92" y1="150" x2="96" y2="150" stroke="#60A5FA" stroke-width="0.8" opacity="0.4"/>
+  <line x1="104" y1="150" x2="108" y2="150" stroke="#60A5FA" stroke-width="0.8" opacity="0.4"/>
+
+  <!-- ===== Node 2 — Analysis (graph/chart) ===== -->
+  <ellipse cx="280" cy="150" rx="65" ry="65" fill="url(#ng2)"/>
+  <circle cx="280" cy="150" r="40" stroke="#FBBF24" stroke-width="1.5" opacity="0.6" filter="url(#nodeglow)"/>
+  <!-- Mini chart axes -->
+  <line x1="260" y1="170" x2="260" y2="130" stroke="#FBBF24" stroke-width="1" opacity="0.5"/>
+  <line x1="260" y1="170" x2="300" y2="170" stroke="#FBBF24" stroke-width="1" opacity="0.5"/>
+  <!-- Chart line -->
+  <polyline points="262,165 270,155 278,160 286,140 294,145 300,132"
+            stroke="#FBBF24" stroke-width="1.5" opacity="0.7" fill="none" stroke-linecap="round"/>
+  <!-- Chart dots -->
+  <circle cx="270" cy="155" r="2" fill="#FBBF24" opacity="0.6"/>
+  <circle cx="286" cy="140" r="2" fill="#FBBF24" opacity="0.6"/>
+  <circle cx="300" cy="132" r="2.5" fill="#FBBF24" opacity="0.7"/>
+  <!-- Magnifying glass hint -->
+  <circle cx="272" cy="145" r="8" stroke="#FBBF24" stroke-width="0.6" opacity="0.2"/>
+
+  <!-- ===== Node 3 — Exploit (terminal/lightning) ===== -->
+  <ellipse cx="440" cy="150" rx="65" ry="65" fill="url(#ng3)"/>
+  <circle cx="440" cy="150" r="40" stroke="#F87171" stroke-width="1.5" opacity="0.6" filter="url(#nodeglow)"/>
+  <!-- Terminal window -->
+  <rect x="422" y="133" width="36" height="28" rx="3" stroke="#F87171" stroke-width="1" opacity="0.5" fill="none"/>
+  <line x1="422" y1="139" x2="458" y2="139" stroke="#F87171" stroke-width="0.5" opacity="0.3"/>
+  <!-- Terminal dots -->
+  <circle cx="427" cy="136" r="1" fill="#F87171" opacity="0.5"/>
+  <circle cx="431" cy="136" r="1" fill="#FBBF24" opacity="0.4"/>
+  <circle cx="435" cy="136" r="1" fill="#4ADE80" opacity="0.4"/>
+  <!-- Terminal prompt -->
+  <text x="426" y="149" fill="#F87171" font-family="monospace" font-size="7" opacity="0.6">$ ./</text>
+  <text x="426" y="157" fill="#4ADE80" font-family="monospace" font-size="6" opacity="0.4">pwned</text>
+  <!-- Lightning bolt accent -->
+  <path d="M455 130 L450 145 L456 145 L451 162" stroke="#F87171" stroke-width="1.2" opacity="0.4" stroke-linecap="round"/>
+
+  <!-- ===== Node 4 — Report (document/checkmark) ===== -->
+  <ellipse cx="600" cy="150" rx="65" ry="65" fill="url(#ng4)"/>
+  <circle cx="600" cy="150" r="40" stroke="#4ADE80" stroke-width="1.5" opacity="0.6" filter="url(#nodeglow)"/>
+  <!-- Document -->
+  <rect x="585" y="130" width="24" height="32" rx="2" stroke="#4ADE80" stroke-width="1" opacity="0.5" fill="none"/>
+  <path d="M603 130 L609 136 L609 130" stroke="#4ADE80" stroke-width="0.8" opacity="0.4" fill="none"/>
+  <!-- Document lines -->
+  <line x1="590" y1="141" x2="604" y2="141" stroke="#4ADE80" stroke-width="0.6" opacity="0.3"/>
+  <line x1="590" y1="146" x2="602" y2="146" stroke="#4ADE80" stroke-width="0.6" opacity="0.25"/>
+  <line x1="590" y1="151" x2="600" y2="151" stroke="#4ADE80" stroke-width="0.6" opacity="0.2"/>
+  <!-- Big checkmark -->
+  <path d="M594 155 L600 161 L616 140" stroke="#4ADE80" stroke-width="2.5" opacity="0.7" stroke-linecap="round" stroke-linejoin="round" filter="url(#nodeglow)"/>
+
   <!-- Labels -->
-  <text x="100" y="210" text-anchor="middle" fill="#60A5FA" font-size="13" font-family="sans-serif" opacity="0.7">Recon</text>
-  <text x="280" y="210" text-anchor="middle" fill="#FBBF24" font-size="13" font-family="sans-serif" opacity="0.7">Analysis</text>
-  <text x="440" y="210" text-anchor="middle" fill="#F87171" font-size="13" font-family="sans-serif" opacity="0.7">Exploit</text>
-  <text x="600" y="210" text-anchor="middle" fill="#4ADE80" font-size="13" font-family="sans-serif" opacity="0.7">Report</text>
-  <!-- Data particles along flow -->
-  <circle cx="170" cy="148" r="1.5" fill="#60A5FA" opacity="0.5"/>
-  <circle cx="190" cy="152" r="1" fill="#60A5FA" opacity="0.4"/>
-  <circle cx="335" cy="147" r="1.5" fill="#FBBF24" opacity="0.5"/>
-  <circle cx="355" cy="153" r="1" fill="#FBBF24" opacity="0.4"/>
-  <circle cx="490" cy="149" r="1.5" fill="#F87171" opacity="0.5"/>
-  <circle cx="510" cy="151" r="1" fill="#F87171" opacity="0.4"/>
+  <text x="100" y="210" text-anchor="middle" fill="#60A5FA" font-size="13" font-family="sans-serif" opacity="0.8" font-weight="500">Recon</text>
+  <text x="280" y="210" text-anchor="middle" fill="#FBBF24" font-size="13" font-family="sans-serif" opacity="0.8" font-weight="500">Analysis</text>
+  <text x="440" y="210" text-anchor="middle" fill="#F87171" font-size="13" font-family="sans-serif" opacity="0.8" font-weight="500">Exploit</text>
+  <text x="600" y="210" text-anchor="middle" fill="#4ADE80" font-size="13" font-family="sans-serif" opacity="0.8" font-weight="500">Report</text>
+
+  <!-- Sub-labels -->
+  <text x="100" y="225" text-anchor="middle" fill="#60A5FA" font-size="8" font-family="sans-serif" opacity="0.4">3 agents</text>
+  <text x="280" y="225" text-anchor="middle" fill="#FBBF24" font-size="8" font-family="sans-serif" opacity="0.4">4 agents</text>
+  <text x="440" y="225" text-anchor="middle" fill="#F87171" font-size="8" font-family="sans-serif" opacity="0.4">4 agents</text>
+  <text x="600" y="225" text-anchor="middle" fill="#4ADE80" font-size="8" font-family="sans-serif" opacity="0.4">2 agents</text>
+
+  <!-- Decorative corner brackets -->
+  <path d="M20 30 L20 15 L35 15" stroke="#7B2D8E" stroke-width="0.8" opacity="0.15"/>
+  <path d="M680 30 L680 15 L665 15" stroke="#7B2D8E" stroke-width="0.8" opacity="0.15"/>
+  <path d="M20 270 L20 285 L35 285" stroke="#7B2D8E" stroke-width="0.8" opacity="0.15"/>
+  <path d="M680 270 L680 285 L665 285" stroke="#7B2D8E" stroke-width="0.8" opacity="0.15"/>
 </svg>

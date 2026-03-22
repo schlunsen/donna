@@ -8,3 +8,4 @@ repos/
 .playwright-mcp/
 deliverables/
 dashboard/data/
+generate-graphics.py
