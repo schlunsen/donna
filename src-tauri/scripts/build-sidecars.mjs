@@ -87,10 +87,28 @@ function buildDashboardSidecar() {
   // create a shell script wrapper that runs the Astro SSR server via Node.js.
   // The dashboard dist/ folder is bundled as a Tauri resource.
   const triple = getPlatformTriple();
-  const outputName = `donna-dashboard-${triple}`;
+  const isWindows = triple.includes("windows") || platform() === "win32";
+  const ext = isWindows ? ".exe" : "";
+  const outputName = `donna-dashboard-${triple}${ext}`;
   const outputPath = join(SIDECARS_DIR, outputName);
 
   console.log("  Creating dashboard launcher script...");
+
+  if (isWindows) {
+    // Windows: create a batch file wrapper
+    const batContent = `@echo off\r\nREM Donna Dashboard Launcher\r\nset "SCRIPT_DIR=%~dp0"\r\nset "DASHBOARD_DIR=%SCRIPT_DIR%..\\dashboard-dist"\r\nif not exist "%DASHBOARD_DIR%\\server\\entry.mjs" (\r\n  echo ERROR: Dashboard dist not found >&2\r\n  exit /b 1\r\n)\r\nnode "%DASHBOARD_DIR%\\server\\entry.mjs"\r\n`;
+    writeFileSync(outputPath, batContent);
+    // Also copy the dashboard dist folder to the sidecars area for bundling
+    const dashboardDistSrc = join(dashboardDir, "dist");
+    const dashboardDistDest = join(TAURI_DIR, "dashboard-dist");
+    if (existsSync(dashboardDistDest)) {
+      run(`rmdir /s /q "${dashboardDistDest}"`, { shell: true });
+    }
+    console.log("  Copying dashboard dist for bundling...");
+    run(`xcopy "${dashboardDistSrc}" "${dashboardDistDest}" /E /I /Q`, { shell: true });
+    console.log(`  ✅ Dashboard sidecar: ${outputPath} (+ dashboard-dist/)`);
+    return;
+  }
 
   // Create a shell script that finds node and runs the Astro entry point
   const scriptContent = `#!/bin/bash
@@ -178,7 +196,8 @@ function buildWorkerSidecar() {
   }
 
   const triple = getPlatformTriple();
-  const outputName = `donna-worker-${triple}`;
+  const isWin = triple.includes("windows") || platform() === "win32";
+  const outputName = `donna-worker-${triple}${isWin ? ".exe" : ""}`;
   const outputPath = join(SIDECARS_DIR, outputName);
 
   // Use pkg to create a standalone binary
