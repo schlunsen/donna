@@ -30,7 +30,7 @@ async function findWorkflow(runId: string) {
     break;
   }
   if (!workflowId) return null;
-  return { client, handle: client.workflow.getHandle(workflowId, runId), workflowId };
+  return { client, handle: client.workflow.getHandle(workflowId, runId), workflowId, runId };
 }
 
 export const GET: APIRoute = async ({ params, url }) => {

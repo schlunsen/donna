@@ -318,32 +318,61 @@ const tocCategories = Object.entries(findingsByCategory).map(([cat, catFindings]
                     SECTION 1: Report Cover / Header
                     ═══════════════════════════════════════════════════════════ */}
                 <header class="report-cover">
-                    <div class="report-cover-badge">DONNA</div>
-                    <h1 class="report-cover-title">Security Assessment Report</h1>
-                    <div class="report-cover-target">{targetUrl}</div>
-                    <div class="report-cover-date">{scanDate}</div>
+                    <div class="cover-bg-pattern"></div>
+                    <div class="cover-content">
+                        <div class="cover-brand">
+                            <img src="/donna-icon.png" alt="Donna" class="cover-icon" />
+                            <div class="cover-brand-text">
+                                <div class="report-cover-badge">DONNA</div>
+                                <span class="cover-tagline">Continuous AI Pentesting Platform</span>
+                            </div>
+                        </div>
 
-                    <div class={`report-risk-indicator ${riskClass}`}>
-                        <div class="risk-label">Overall Risk</div>
-                        <div class="risk-value">{overallRisk}</div>
-                    </div>
+                        <div class="cover-title-block">
+                            <h1 class="report-cover-title">Security Assessment Report</h1>
+                            <div class="cover-title-line"></div>
+                        </div>
 
-                    <div class="report-cover-meta">
-                        <div class="cover-meta-item">
-                            <span class="cover-meta-label">Duration</span>
-                            <span class="cover-meta-value">{getElapsed(wfStartTime, wfCloseTime)}</span>
+                        <div class="cover-target-block">
+                            <span class="cover-target-label">Target</span>
+                            <div class="report-cover-target">{targetUrl}</div>
+                            <div class="report-cover-date">{scanDate}</div>
                         </div>
-                        <div class="cover-meta-item">
-                            <span class="cover-meta-label">Cost</span>
-                            <span class="cover-meta-value">{totalCostFormatted}</span>
+
+                        <div class={`report-risk-indicator ${riskClass}`}>
+                            <div class="risk-label">Overall Risk</div>
+                            <div class="risk-value">{overallRisk}</div>
                         </div>
-                        <div class="cover-meta-item">
-                            <span class="cover-meta-label">Findings</span>
-                            <span class="cover-meta-value">{totalFindings}</span>
+
+                        <div class="cover-severity-pills">
+                            {findingCounts.critical > 0 && <span class="cover-pill critical">{findingCounts.critical} Critical</span>}
+                            {findingCounts.high > 0 && <span class="cover-pill high">{findingCounts.high} High</span>}
+                            {findingCounts.medium > 0 && <span class="cover-pill medium">{findingCounts.medium} Medium</span>}
+                            {findingCounts.low > 0 && <span class="cover-pill low">{findingCounts.low} Low</span>}
+                            {findingCounts.informational > 0 && <span class="cover-pill info">{findingCounts.informational} Info</span>}
                         </div>
-                        <div class="cover-meta-item">
-                            <span class="cover-meta-label">Agents</span>
-                            <span class="cover-meta-value">{agents.length}</span>
+
+                        <div class="report-cover-meta">
+                            <div class="cover-meta-item">
+                                <span class="cover-meta-icon">&#9201;</span>
+                                <span class="cover-meta-label">Duration</span>
+                                <span class="cover-meta-value">{getElapsed(wfStartTime, wfCloseTime)}</span>
+                            </div>
+                            <div class="cover-meta-item">
+                                <span class="cover-meta-icon">&#9878;</span>
+                                <span class="cover-meta-label">Cost</span>
+                                <span class="cover-meta-value">{totalCostFormatted}</span>
+                            </div>
+                            <div class="cover-meta-item">
+                                <span class="cover-meta-icon">&#9888;</span>
+                                <span class="cover-meta-label">Findings</span>
+                                <span class="cover-meta-value">{totalFindings}</span>
+                            </div>
+                            <div class="cover-meta-item">
+                                <span class="cover-meta-icon">&#9881;</span>
+                                <span class="cover-meta-label">Agents</span>
+                                <span class="cover-meta-value">{agents.length}</span>
+                            </div>
                         </div>
                     </div>
                 </header>
@@ -760,11 +789,16 @@ const tocCategories = Object.entries(findingsByCategory).map(([cat, catFindings]
                 {/* Footer */}
                 <footer class="report-footer">
                     <div class="report-footer-line"></div>
-                    <p>
-                        Generated by <strong>Donna</strong> v{donnaVersion} {"—"}
-                        AI-Powered Continuous Security Assessment
-                    </p>
-                    <p class="report-footer-date">{formatDateTime(new Date().toISOString())}</p>
+                    <div class="report-footer-brand">
+                        <img src="/donna-icon.png" alt="Donna" class="footer-icon" />
+                        <div>
+                            <p>
+                                Generated by <strong>Donna</strong> v{donnaVersion} {"—"}
+                                Continuous AI Pentesting Platform
+                            </p>
+                            <p class="report-footer-date">{formatDateTime(new Date().toISOString())}</p>
+                        </div>
+                    </div>
                 </footer>
             </div>
         )}
@@ -822,72 +856,164 @@ const tocCategories = Object.entries(findingsByCategory).map(([cat, catFindings]
 
     /* ── Cover / Header ──────────────────────────────────── */
     .report-cover {
+        position: relative;
         text-align: center;
-        padding: 4rem 2rem 3rem;
-        margin-bottom: 2rem;
-        border-bottom: 1px solid var(--border);
+        padding: 0;
+        margin-bottom: 2.5rem;
+        border-radius: var(--radius-lg);
+        overflow: hidden;
+        background: linear-gradient(145deg, #1a0a2e 0%, #2d1248 35%, #3F0E40 60%, #1a0a2e 100%);
+        border: 1px solid rgba(123, 45, 142, 0.3);
+    }
+
+    .cover-bg-pattern {
+        position: absolute;
+        inset: 0;
+        background-image:
+            radial-gradient(ellipse at 20% 50%, rgba(123, 45, 142, 0.25) 0%, transparent 60%),
+            radial-gradient(ellipse at 80% 20%, rgba(56, 189, 248, 0.08) 0%, transparent 50%),
+            radial-gradient(ellipse at 50% 90%, rgba(123, 45, 142, 0.15) 0%, transparent 50%);
+        background-size: 100% 100%;
+        pointer-events: none;
+    }
+
+    .cover-bg-pattern::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%237B2D8E' fill-opacity='0.04'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+        opacity: 0.5;
+    }
+
+    .cover-content {
+        position: relative;
+        z-index: 1;
+        padding: 3.5rem 2.5rem 3rem;
+    }
+
+    .cover-brand {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 1.25rem;
+        margin-bottom: 2.5rem;
+    }
+
+    .cover-icon {
+        width: 80px;
+        height: 80px;
+        border-radius: 20px;
+        box-shadow:
+            0 0 0 3px rgba(123, 45, 142, 0.4),
+            0 0 30px rgba(123, 45, 142, 0.3),
+            0 8px 32px rgba(0, 0, 0, 0.4);
+    }
+
+    .cover-brand-text {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.35rem;
     }
 
     .report-cover-badge {
         display: inline-block;
+        font-size: 1.5rem;
+        font-weight: 900;
+        letter-spacing: 0.15em;
+        color: var(--white);
+        background: none;
+        padding: 0;
+        border: none;
+        line-height: 1;
+    }
+
+    .cover-tagline {
         font-size: 0.7rem;
-        font-weight: 800;
-        letter-spacing: 0.3em;
+        font-weight: 500;
+        letter-spacing: 0.08em;
         text-transform: uppercase;
-        color: var(--purple-light);
-        background: var(--purple-subtle);
-        padding: 0.35rem 1.25rem;
-        border-radius: var(--radius-full);
-        border: 1px solid rgba(123, 45, 142, 0.3);
-        margin-bottom: 1.5rem;
+        color: rgba(196, 167, 231, 0.7);
+    }
+
+    .cover-title-block {
+        margin-bottom: 2rem;
     }
 
     .report-cover-title {
-        font-size: 2.25rem;
+        font-size: 2.5rem;
         font-weight: 800;
         color: var(--white);
         letter-spacing: -0.04em;
         margin-bottom: 0.75rem;
         line-height: 1.15;
+        text-shadow: 0 2px 20px rgba(123, 45, 142, 0.3);
+    }
+
+    .cover-title-line {
+        width: 80px;
+        height: 3px;
+        background: linear-gradient(90deg, #7B2D8E, #c084fc, #7B2D8E);
+        margin: 0 auto;
+        border-radius: 2px;
+    }
+
+    .cover-target-block {
+        margin-bottom: 2rem;
+    }
+
+    .cover-target-label {
+        display: inline-block;
+        font-size: 0.6rem;
+        font-weight: 700;
+        letter-spacing: 0.15em;
+        text-transform: uppercase;
+        color: rgba(196, 167, 231, 0.5);
+        margin-bottom: 0.4rem;
     }
 
     .report-cover-target {
-        font-size: 1.1rem;
-        color: var(--purple-light);
+        font-size: 1.15rem;
+        color: #c084fc;
         font-family: var(--font-mono);
         margin-bottom: 0.35rem;
+        text-shadow: 0 0 20px rgba(192, 132, 252, 0.2);
     }
 
     .report-cover-date {
         font-size: 0.85rem;
         color: var(--text-dim);
-        margin-bottom: 2rem;
     }
 
     .report-risk-indicator {
         display: inline-flex;
         flex-direction: column;
         align-items: center;
-        padding: 1rem 2.5rem;
+        padding: 1.25rem 3rem;
         border-radius: var(--radius-lg);
-        margin-bottom: 2rem;
+        margin-bottom: 1.5rem;
+        backdrop-filter: blur(10px);
     }
 
     .report-risk-indicator.critical {
-        background: rgba(220, 38, 38, 0.1);
-        border: 1px solid rgba(220, 38, 38, 0.3);
+        background: rgba(220, 38, 38, 0.12);
+        border: 1px solid rgba(220, 38, 38, 0.35);
+        box-shadow: 0 0 30px rgba(220, 38, 38, 0.1);
     }
     .report-risk-indicator.high {
-        background: rgba(234, 88, 12, 0.1);
-        border: 1px solid rgba(234, 88, 12, 0.3);
+        background: rgba(234, 88, 12, 0.12);
+        border: 1px solid rgba(234, 88, 12, 0.35);
+        box-shadow: 0 0 30px rgba(234, 88, 12, 0.1);
     }
     .report-risk-indicator.medium {
-        background: rgba(202, 138, 4, 0.1);
-        border: 1px solid rgba(202, 138, 4, 0.3);
+        background: rgba(202, 138, 4, 0.12);
+        border: 1px solid rgba(202, 138, 4, 0.35);
+        box-shadow: 0 0 30px rgba(202, 138, 4, 0.1);
     }
     .report-risk-indicator.low {
-        background: rgba(37, 99, 235, 0.1);
-        border: 1px solid rgba(37, 99, 235, 0.3);
+        background: rgba(37, 99, 235, 0.12);
+        border: 1px solid rgba(37, 99, 235, 0.35);
+        box-shadow: 0 0 30px rgba(37, 99, 235, 0.1);
     }
     .report-risk-indicator.informational {
         background: rgba(148, 163, 184, 0.08);
@@ -895,16 +1021,16 @@ const tocCategories = Object.entries(findingsByCategory).map(([cat, catFindings]
     }
 
     .risk-label {
-        font-size: 0.65rem;
+        font-size: 0.6rem;
         text-transform: uppercase;
-        letter-spacing: 0.12em;
+        letter-spacing: 0.15em;
         color: var(--text-dim);
         font-weight: 600;
-        margin-bottom: 0.25rem;
+        margin-bottom: 0.3rem;
     }
 
     .risk-value {
-        font-size: 1.5rem;
+        font-size: 1.75rem;
         font-weight: 800;
         letter-spacing: -0.02em;
     }
@@ -915,11 +1041,55 @@ const tocCategories = Object.entries(findingsByCategory).map(([cat, catFindings]
     .report-risk-indicator.low .risk-value { color: #60a5fa; }
     .report-risk-indicator.informational .risk-value { color: #94a3b8; }
 
-    .report-cover-meta {
+    /* Severity pills row */
+    .cover-severity-pills {
         display: flex;
         justify-content: center;
-        gap: 2.5rem;
+        gap: 0.5rem;
         flex-wrap: wrap;
+        margin-bottom: 2.5rem;
+    }
+
+    .cover-pill {
+        font-size: 0.7rem;
+        font-weight: 700;
+        padding: 0.3rem 0.85rem;
+        border-radius: 20px;
+        letter-spacing: 0.02em;
+    }
+
+    .cover-pill.critical {
+        background: rgba(220, 38, 38, 0.15);
+        color: #f87171;
+        border: 1px solid rgba(220, 38, 38, 0.3);
+    }
+    .cover-pill.high {
+        background: rgba(234, 88, 12, 0.15);
+        color: #fb923c;
+        border: 1px solid rgba(234, 88, 12, 0.3);
+    }
+    .cover-pill.medium {
+        background: rgba(202, 138, 4, 0.15);
+        color: #fbbf24;
+        border: 1px solid rgba(202, 138, 4, 0.3);
+    }
+    .cover-pill.low {
+        background: rgba(37, 99, 235, 0.15);
+        color: #60a5fa;
+        border: 1px solid rgba(37, 99, 235, 0.3);
+    }
+    .cover-pill.info {
+        background: rgba(148, 163, 184, 0.1);
+        color: #94a3b8;
+        border: 1px solid rgba(148, 163, 184, 0.2);
+    }
+
+    .report-cover-meta {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 1rem;
+        max-width: 600px;
+        margin: 0 auto;
     }
 
     .cover-meta-item {
@@ -927,18 +1097,29 @@ const tocCategories = Object.entries(findingsByCategory).map(([cat, catFindings]
         flex-direction: column;
         align-items: center;
         gap: 0.2rem;
+        padding: 1rem 0.5rem;
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        border-radius: var(--radius-lg);
+        backdrop-filter: blur(5px);
+    }
+
+    .cover-meta-icon {
+        font-size: 1.1rem;
+        margin-bottom: 0.15rem;
+        opacity: 0.6;
     }
 
     .cover-meta-label {
-        font-size: 0.65rem;
+        font-size: 0.6rem;
         text-transform: uppercase;
-        letter-spacing: 0.1em;
+        letter-spacing: 0.12em;
         color: var(--text-faint);
         font-weight: 600;
     }
 
     .cover-meta-value {
-        font-size: 1.1rem;
+        font-size: 1.05rem;
         font-weight: 700;
         color: var(--white);
         font-family: var(--font-mono);
@@ -1712,10 +1893,24 @@ const tocCategories = Object.entries(findingsByCategory).map(([cat, catFindings]
     }
 
     .report-footer-line {
-        width: 100px;
-        height: 1px;
-        background: var(--border);
+        width: 80px;
+        height: 2px;
+        background: linear-gradient(90deg, transparent, var(--border), transparent);
         margin: 0 auto 1.5rem;
+    }
+
+    .report-footer-brand {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.85rem;
+    }
+
+    .footer-icon {
+        width: 36px;
+        height: 36px;
+        border-radius: 8px;
+        opacity: 0.7;
     }
 
     .report-footer p {
@@ -1776,14 +1971,51 @@ const tocCategories = Object.entries(findingsByCategory).map(([cat, catFindings]
             color: #1a1a1a !important;
         }
 
+        .report-cover {
+            background: linear-gradient(145deg, #f8f4fc 0%, #f3e8f9 50%, #f8f4fc 100%) !important;
+            border-color: #d8b4fe !important;
+        }
+
+        .cover-bg-pattern { display: none !important; }
+
+        .cover-icon {
+            box-shadow: 0 4px 12px rgba(123, 45, 142, 0.15) !important;
+        }
+
         .report-cover-badge {
+            color: #3F0E40 !important;
+            background: none !important;
+            border: none !important;
+        }
+
+        .cover-tagline {
             color: #7B2D8E !important;
-            border-color: #7B2D8E !important;
-            background: #f3e8f9 !important;
+        }
+
+        .cover-title-line {
+            background: #7B2D8E !important;
+        }
+
+        .cover-target-label {
+            color: #999 !important;
         }
 
         .report-cover-target {
             color: #7B2D8E !important;
+        }
+
+        .cover-pill {
+            border-width: 1px !important;
+        }
+        .cover-pill.critical { background: #fef2f2 !important; color: #dc2626 !important; border-color: #fca5a5 !important; }
+        .cover-pill.high { background: #fff7ed !important; color: #ea580c !important; border-color: #fdba74 !important; }
+        .cover-pill.medium { background: #fffbeb !important; color: #ca8a04 !important; border-color: #fcd34d !important; }
+        .cover-pill.low { background: #eff6ff !important; color: #2563eb !important; border-color: #93c5fd !important; }
+        .cover-pill.info { background: #f8fafc !important; color: #64748b !important; border-color: #cbd5e1 !important; }
+
+        .cover-meta-item {
+            background: rgba(123, 45, 142, 0.04) !important;
+            border-color: #e9d5f5 !important;
         }
 
         .report-cover-date, .cover-meta-label, .risk-label,
@@ -2029,9 +2261,12 @@ const tocCategories = Object.entries(findingsByCategory).map(([cat, catFindings]
        ═══════════════════════════════════════════════════════════════════════════ */
     @media (max-width: 768px) {
         .report-page { padding: 1rem; }
-        .report-cover { padding: 2rem 1rem; }
+        .cover-content { padding: 2rem 1rem; }
         .report-cover-title { font-size: 1.5rem; }
-        .report-cover-meta { gap: 1.5rem; }
+        .cover-icon { width: 60px; height: 60px; border-radius: 14px; }
+        .report-cover-badge { font-size: 1.2rem; }
+        .report-cover-meta { grid-template-columns: repeat(2, 1fr); gap: 0.75rem; }
+        .cover-brand { gap: 1rem; }
         .finding-card { padding: 1.25rem; }
         .category-grid { grid-template-columns: 1fr; }
         .comparison-summary { grid-template-columns: 1fr; }
