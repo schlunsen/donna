@@ -112,6 +112,15 @@ const base = import.meta.env.BASE_URL;
         -webkit-background-clip: text; -webkit-text-fill-color: transparent;
         background-clip: text;
       }
+      .hero-slogan {
+        font-size: clamp(16px, 2vw, 20px);
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 4px;
+        color: var(--purple-light);
+        margin-top: 12px;
+        opacity: 0.85;
+      }
       .hero-sub {
         font-size: clamp(18px, 2.5vw, 22px);
         color: var(--text-muted); max-width: 640px; margin: 20px auto 0;
@@ -307,6 +316,7 @@ const base = import.meta.env.BASE_URL;
     <div class="container">
       <p class="hero-eyebrow">Autonomous Security Testing</p>
       <h1>Donna</h1>
+      <p class="hero-slogan">Grab 'em by the balls</p>
       <p class="hero-sub">
         13 AI agents working around the clock to find every vulnerability before attackers do.
         Continuous pentesting with a real-time web dashboard.

@@ -6,6 +6,8 @@
 
 > **D**eviant **O**rchestration of **N**on-compliant **N**eural **A**gents
 
+### *Grab 'em by the balls.*
+
 **Continuous AI-powered security scanning with a real-time web dashboard.**
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
