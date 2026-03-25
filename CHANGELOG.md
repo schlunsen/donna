@@ -2,6 +2,47 @@
 
 All notable changes to Donna will be documented in this file.
 
+## [1.1.0] - 2026-03-25
+
+### Added
+
+#### Tauri Desktop App
+- Native macOS and Windows desktop application built with Tauri v2
+- Auto-login flow with embedded dashboard authentication
+- Dark/light theme toggle synced across the app
+- Loading screen with startup status and Temporal readiness detection
+- DMG packaging for macOS distribution
+- Cross-platform CI pipeline with sidecar builds for mcp-server and dashboard
+
+#### Dashboard Enhancements
+- Redesigned report cover page with improved visual hierarchy
+- "Start New" workflow action for quick scan initiation
+- DONNA acronym branding across the UI
+- Workflow API response improvements for better status tracking
+- Parent run comparison in workflow detail views
+
+#### Infrastructure & Deployment
+- Production deployment to Hetzner dedicated server with Justfile automation
+- Docker Compose with bind-mounted SQLite databases (Temporal + Dashboard) for safe restarts
+- Google OAuth (better-auth) with email allowlist for access control
+- Automated Temporal DB backups via cron
+- Server credential management for Claude Code OAuth tokens
+- Nginx reverse proxy with SSL termination
+
+#### Landing Site & Presentation
+- GitHub Pages landing site with interactive Three.js synthwave background
+- Animated SVG presentation deck with slide transitions
+- Retro 70s aesthetic with custom graphics
+
+### Fixed
+- Windows build: proper ICO file generation for Tauri
+- CI pipeline: Apple signing removal, Windows .exe support, cross-compilation target triples
+- Dashboard startup: TCP health checks, project node_modules resolution, sidecar logging
+- Tauri v2 API compatibility and permission discovery issues
+- Three.js background z-index conflicts on landing page
+
+---
+
 ## [2.1.0] - 2026-03-21
 
 ### Added

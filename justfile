@@ -205,8 +205,8 @@ deploy-migrate-volumes:
     ssh {{SERVER}} "cd {{REMOTE_DIR}} && docker compose cp temporal:/home/temporal/. data/temporal/"
     @echo "📦 Copying Dashboard DB from volume to disk..."
     ssh {{SERVER}} "cd {{REMOTE_DIR}} && docker compose cp dashboard:/app/data/. data/dashboard/ 2>/dev/null || echo '  (no dashboard data to migrate)'"
-    @echo "🔒 Fixing permissions (Temporal runs as UID 1000)..."
-    ssh {{SERVER}} "chown -R 1000:1000 {{REMOTE_DIR}}/data/temporal"
+    @echo "🔒 Fixing permissions (Temporal=UID 1000, Dashboard=UID 100)..."
+    ssh {{SERVER}} "chown -R 1000:1000 {{REMOTE_DIR}}/data/temporal && chown -R 100:101 {{REMOTE_DIR}}/data/dashboard"
     @echo "🔄 Syncing new docker-compose.yml..."
     rsync -avz ./docker-compose.yml {{SERVER}}:{{REMOTE_DIR}}/docker-compose.yml
     @echo "♻️  Restarting all services with bind mounts..."
