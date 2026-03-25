@@ -2,7 +2,7 @@
 
 All notable changes to Donna will be documented in this file.
 
-## [1.1.0] - 2026-03-25
+## [2.3.0] - 2026-03-25
 
 ### Added
 
