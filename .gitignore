@@ -7,6 +7,7 @@ repos/
 .worktrees/
 .playwright-mcp/
 deliverables/
+data/
 dashboard/data/
 generate-graphics.py
 

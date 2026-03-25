@@ -132,37 +132,99 @@ restart-worker:
     docker compose up -d --build worker
 
 # ─── Deploy (production) ───────────────────────────────────────────────────
+# DBs are bind-mounted to ./data/ on disk — safe to docker compose down/up.
+# Temporal DB: ./data/temporal/temporal.db (owned by UID 1000)
+# Dashboard auth DB: ./data/dashboard/auth.db
 
 SERVER := env_var_or_default("DONNA_DEPLOY_SERVER", "root@78.46.219.157")
 REMOTE_DIR := "/opt/donna"
 
-# Deploy dashboard to production (production)
+RSYNC_EXCLUDES := "--exclude='node_modules' --exclude='.git' --exclude='data' --exclude='dashboard/data' --exclude='audit-logs' --exclude='repos' --exclude='dashboard/node_modules' --exclude='.worktrees' --exclude='.playwright-mcp' --exclude='.env' --exclude='src-tauri' --exclude='site'"
+
+# Deploy dashboard only to production
 deploy:
-    @echo "🚀 Deploying to production..."
-    rsync -avz --exclude='node_modules' --exclude='.git' --exclude='dashboard/data' \
-        --exclude='audit-logs' --exclude='repos' --exclude='dashboard/node_modules' \
-        --exclude='.worktrees' --exclude='.playwright-mcp' \
+    @echo "🚀 Deploying dashboard to production..."
+    rsync -avz {{RSYNC_EXCLUDES}} \
         ./dashboard/ {{SERVER}}:{{REMOTE_DIR}}/dashboard/
-    ssh {{SERVER}} "cd {{REMOTE_DIR}} && docker compose build dashboard && docker compose up -d dashboard"
-    @echo "✅ Deployed! https://production"
+    ssh {{SERVER}} "cd {{REMOTE_DIR}} && docker compose build dashboard && docker compose up -d --no-deps dashboard"
+    @echo "⏳ Waiting for dashboard to be healthy..."
+    ssh {{SERVER}} "cd {{REMOTE_DIR}} && sleep 3 && docker compose ps dashboard"
+    @echo "✅ Dashboard deployed!"
 
-# Deploy everything (dashboard + docker-compose + configs)
-deploy-full:
-    @echo "🚀 Full deploy to production..."
-    rsync -avz --exclude='node_modules' --exclude='.git' --exclude='dashboard/data' \
-        --exclude='audit-logs' --exclude='repos' --exclude='dashboard/node_modules' \
-        --exclude='.worktrees' --exclude='.playwright-mcp' --exclude='.env' \
+# Deploy worker only to production
+deploy-worker:
+    @echo "🚀 Deploying worker to production..."
+    rsync -avz {{RSYNC_EXCLUDES}} \
+        --exclude='dashboard' \
         ./ {{SERVER}}:{{REMOTE_DIR}}/
-    ssh {{SERVER}} "cd {{REMOTE_DIR}} && docker compose build && docker compose up -d"
-    @echo "✅ Full deploy complete! https://production"
+    ssh {{SERVER}} "cd {{REMOTE_DIR}} && docker compose build worker && docker compose up -d --no-deps worker"
+    @echo "⏳ Waiting for worker to start..."
+    ssh {{SERVER}} "cd {{REMOTE_DIR}} && sleep 3 && docker compose ps worker"
+    @echo "✅ Worker deployed!"
 
-# View production logs
-deploy-logs:
-    ssh {{SERVER}} "cd {{REMOTE_DIR}} && docker compose logs -f dashboard"
+# Deploy everything EXCEPT Temporal (safe — preserves DB)
+deploy-full:
+    @echo "🚀 Full deploy to production (Temporal untouched)..."
+    rsync -avz {{RSYNC_EXCLUDES}} \
+        ./ {{SERVER}}:{{REMOTE_DIR}}/
+    @echo "📦 Building worker + dashboard images..."
+    ssh {{SERVER}} "cd {{REMOTE_DIR}} && docker compose build worker dashboard"
+    @echo "♻️  Restarting worker + dashboard (Temporal stays running)..."
+    ssh {{SERVER}} "cd {{REMOTE_DIR}} && docker compose up -d --no-deps worker dashboard"
+    @echo "⏳ Checking service status..."
+    ssh {{SERVER}} "cd {{REMOTE_DIR}} && sleep 5 && docker compose ps"
+    @echo "✅ Full deploy complete! Temporal DB untouched."
+
+# Show production service status
+deploy-status:
+    ssh {{SERVER}} "cd {{REMOTE_DIR}} && docker compose ps && echo '---' && docker compose top temporal 2>/dev/null | head -5 && echo '--- Volumes:' && docker volume ls --filter name=donna"
+
+# View production logs (all services)
+deploy-logs *args="dashboard":
+    ssh {{SERVER}} "cd {{REMOTE_DIR}} && docker compose logs -f {{args}}"
 
 # SSH into the production server
 deploy-ssh:
     ssh {{SERVER}}
+
+# Backup production database volumes before risky operations
+deploy-backup:
+    @echo "💾 Backing up production database volumes..."
+    ssh {{SERVER}} "mkdir -p /opt/donna-backups/$(date +%Y%m%d-%H%M%S) && \
+        cd {{REMOTE_DIR}} && \
+        docker compose exec -T temporal cp /home/temporal/temporal.db /tmp/temporal-backup.db && \
+        docker compose cp temporal:/tmp/temporal-backup.db /opt/donna-backups/$(date +%Y%m%d-%H%M%S)/temporal.db && \
+        docker compose cp dashboard:/app/data /opt/donna-backups/$(date +%Y%m%d-%H%M%S)/dashboard-data/ 2>/dev/null || true"
+    @echo "✅ Backup complete at /opt/donna-backups/ on server"
+
+# Migrate production DB from Docker volumes to disk bind mounts
+deploy-migrate-volumes:
+    @echo "🔄 Migrating Docker volumes to disk bind mounts..."
+    ssh {{SERVER}} "cd {{REMOTE_DIR}} && mkdir -p data/temporal data/dashboard"
+    @echo "📦 Copying Temporal DB from volume to disk..."
+    ssh {{SERVER}} "cd {{REMOTE_DIR}} && docker compose cp temporal:/home/temporal/. data/temporal/"
+    @echo "📦 Copying Dashboard DB from volume to disk..."
+    ssh {{SERVER}} "cd {{REMOTE_DIR}} && docker compose cp dashboard:/app/data/. data/dashboard/ 2>/dev/null || echo '  (no dashboard data to migrate)'"
+    @echo "🔒 Fixing permissions (Temporal runs as UID 1000)..."
+    ssh {{SERVER}} "chown -R 1000:1000 {{REMOTE_DIR}}/data/temporal"
+    @echo "🔄 Syncing new docker-compose.yml..."
+    rsync -avz ./docker-compose.yml {{SERVER}}:{{REMOTE_DIR}}/docker-compose.yml
+    @echo "♻️  Restarting all services with bind mounts..."
+    ssh {{SERVER}} "cd {{REMOTE_DIR}} && docker compose down && docker compose up -d"
+    @echo "⏳ Waiting for services..."
+    ssh {{SERVER}} "cd {{REMOTE_DIR}} && sleep 12 && docker compose ps"
+    @echo "✅ Migration complete! DBs now live at {{REMOTE_DIR}}/data/ on disk."
+    @echo "   You can safely 'docker compose down && up' without losing data."
+    @echo "   Old Docker volumes can be removed with: docker volume rm donna_temporal-data donna_dashboard-data"
+
+# DANGEROUS: Restart Temporal (will briefly interrupt running workflows)
+deploy-restart-temporal:
+    @echo "⚠️  WARNING: This will restart Temporal. Running workflows will be interrupted."
+    @echo "Press Ctrl+C to cancel, or wait 5 seconds to continue..."
+    @sleep 5
+    ssh {{SERVER}} "cd {{REMOTE_DIR}} && docker compose restart temporal"
+    @echo "⏳ Waiting for Temporal to be healthy..."
+    ssh {{SERVER}} "cd {{REMOTE_DIR}} && sleep 10 && docker compose ps temporal"
 
 # ─── Dashboard Dev ──────────────────────────────────────────────────────────────
 
