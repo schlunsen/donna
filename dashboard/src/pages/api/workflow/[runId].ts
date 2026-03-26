@@ -15,9 +15,13 @@
 
 import type { APIRoute } from 'astro';
 import { getTemporalClient } from '../../../lib/temporal.js';
+import { validateWebUrl } from '../../../lib/url-validation.js';
 
 // Validate runId format to prevent query injection (UUID format)
 const RUN_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Allowlist of permitted Temporal query handler names (INJ-VULN-06 fix)
+const ALLOWED_QUERY_TYPES = new Set(['getProgress']);
 
 async function findWorkflow(runId: string) {
   if (!RUN_ID_PATTERN.test(runId)) {
@@ -33,8 +37,44 @@ async function findWorkflow(runId: string) {
   return { client, handle: client.workflow.getHandle(workflowId, runId), workflowId, runId };
 }
 
-export const GET: APIRoute = async ({ params, url }) => {
+/**
+ * Extract the owner email from workflow input (first history event).
+ */
+async function getWorkflowOwner(handle: any): Promise<string | null> {
+  try {
+    const history = await handle.fetchHistory();
+    for (const ev of history?.events || []) {
+      const attrs = (ev as any).workflowExecutionStartedEventAttributes;
+      if (attrs?.input?.payloads?.[0]?.data) {
+        const input = JSON.parse(Buffer.from(attrs.input.payloads[0].data).toString('utf-8'));
+        return input.createdByEmail || null;
+      }
+    }
+  } catch { /* history unavailable */ }
+  return null;
+}
+
+/**
+ * Verify the authenticated user owns this workflow (AUTHZ-VULN-03 fix).
+ * Returns true if user owns the workflow or if the workflow has no owner (legacy).
+ */
+async function verifyOwnership(handle: any, userEmail: string): Promise<boolean> {
+  const ownerEmail = await getWorkflowOwner(handle);
+  // Legacy workflows without owner are accessible to all authenticated users
+  if (!ownerEmail) return true;
+  return ownerEmail.toLowerCase() === userEmail.toLowerCase();
+}
+
+export const GET: APIRoute = async ({ params, url, locals }) => {
   const { runId } = params;
+  const session = (locals as any).session;
+
+  if (!session?.user?.email) {
+    return new Response(JSON.stringify({ error: 'Authentication required' }), {
+      status: 401,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
 
   if (!runId) {
     return new Response(JSON.stringify({ error: 'runId required' }), {
@@ -54,9 +94,25 @@ export const GET: APIRoute = async ({ params, url }) => {
 
     const { handle } = found;
 
-    // Handle query parameter — run a specific query
+    // Verify the authenticated user owns this workflow
+    if (!await verifyOwnership(handle, session.user.email)) {
+      return new Response(JSON.stringify({ error: 'Workflow not found' }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Handle query parameter — run a specific query (allowlisted only)
     const queryType = url.searchParams.get('query');
     if (queryType) {
+      // Only allow specific query handlers to prevent info disclosure (INJ-VULN-06)
+      if (!ALLOWED_QUERY_TYPES.has(queryType)) {
+        return new Response(JSON.stringify({ error: 'Query type not allowed' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
       try {
         const result = await handle.query(queryType);
         return new Response(JSON.stringify({ progress: result }), {
@@ -171,9 +227,17 @@ export const GET: APIRoute = async ({ params, url }) => {
   }
 };
 
-export const POST: APIRoute = async ({ params, url }) => {
+export const POST: APIRoute = async ({ params, url, locals }) => {
   const { runId } = params;
   const action = url.searchParams.get('action');
+  const session = (locals as any).session;
+
+  if (!session?.user?.email) {
+    return new Response(JSON.stringify({ error: 'Authentication required' }), {
+      status: 401,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
 
   if (!runId) {
     return new Response(JSON.stringify({ error: 'runId required' }), {
@@ -199,6 +263,14 @@ export const POST: APIRoute = async ({ params, url }) => {
     }
 
     const { handle, client } = found;
+
+    // Verify the authenticated user owns this workflow
+    if (!await verifyOwnership(handle, session.user.email)) {
+      return new Response(JSON.stringify({ error: 'Workflow not found' }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
 
     if (action === 'cancel') {
       await handle.cancel();
@@ -238,21 +310,34 @@ export const POST: APIRoute = async ({ params, url }) => {
         });
       }
 
+      // Re-validate webUrl on restart/start-new (SSRF-VULN-02 fix)
+      const webUrl = originalInput.webUrl as string | undefined;
+      if (webUrl) {
+        const urlError = validateWebUrl(webUrl);
+        if (urlError) {
+          return new Response(
+            JSON.stringify({ error: `Stored webUrl is invalid: ${urlError}` }),
+            { status: 400, headers: { 'Content-Type': 'application/json' } }
+          );
+        }
+      }
+
       // Start a new workflow with the same input but a new ID
       const newWorkflowId = `${found.workflowId.replace(/-\d+$/, '')}-${Date.now()}`;
 
       if (action === 'start-new') {
         // Start New: fresh workflow on the same target & folder, linking back to parent
-        const newInput = {
+        const newInput: Record<string, unknown> = {
           webUrl: originalInput.webUrl,
           repoPath: originalInput.repoPath,
-          ...(originalInput.pipelineTestingMode && { pipelineTestingMode: true }),
-          ...(originalInput.configPath && { configPath: originalInput.configPath }),
-          ...(originalInput.pipelineConfig && { pipelineConfig: originalInput.pipelineConfig }),
           workflowId: newWorkflowId,
           sessionId: newWorkflowId,
           parentRunId: found.runId,
+          createdByEmail: session.user.email,
         };
+        if (originalInput.pipelineTestingMode) newInput.pipelineTestingMode = true;
+        if (originalInput.configPath) newInput.configPath = originalInput.configPath;
+        if (originalInput.pipelineConfig) newInput.pipelineConfig = originalInput.pipelineConfig;
 
         const newHandle = await client.workflow.start('pentestPipelineWorkflow', {
           taskQueue: attrs?.taskQueue?.name || 'donna-pipeline',
@@ -272,8 +357,17 @@ export const POST: APIRoute = async ({ params, url }) => {
         });
       }
 
-      // Restart: clone all original input
-      const newInput = { ...originalInput, workflowId: newWorkflowId, sessionId: newWorkflowId };
+      // Restart: clone all original input (but only allowed fields)
+      const newInput: Record<string, unknown> = {
+        webUrl: originalInput.webUrl,
+        repoPath: originalInput.repoPath,
+        workflowId: newWorkflowId,
+        sessionId: newWorkflowId,
+        createdByEmail: session.user.email,
+      };
+      if (originalInput.pipelineTestingMode) newInput.pipelineTestingMode = true;
+      if (originalInput.configPath) newInput.configPath = originalInput.configPath;
+      if (originalInput.pipelineConfig) newInput.pipelineConfig = originalInput.pipelineConfig;
 
       const newHandle = await client.workflow.start('pentestPipelineWorkflow', {
         taskQueue: attrs?.taskQueue?.name || 'donna-pipeline',

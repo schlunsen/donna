@@ -103,10 +103,12 @@ const { activePage = 'workflows', runningCount = 0, failedCount = 0 } = Astro.pr
             <span class="theme-toggle-icon" id="themeIcon">🌙</span>
             <span id="themeLabel">Dark</span>
         </button>
-        <a href="/api/auth/sign-out-action" class="sidebar-footer-link" style="text-decoration: none;">
-            <span class="sidebar-link-icon">🚪</span>
-            <span>Sign Out</span>
-        </a>
+        <form method="POST" action="/api/auth/sign-out-action" style="display: contents;">
+            <button type="submit" class="sidebar-footer-link" style="text-decoration: none; border: none; background: none; cursor: pointer; width: 100%; text-align: left;">
+                <span class="sidebar-link-icon">🚪</span>
+                <span>Sign Out</span>
+            </button>
+        </form>
     </div>
 </aside>
 

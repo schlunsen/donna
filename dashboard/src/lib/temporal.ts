@@ -70,6 +70,10 @@ export interface WorkflowInfo {
   progress?: PipelineProgress;
   // Target URL extracted from workflow input
   webUrl?: string;
+  // Model profile name from workflow input (e.g., "claude", "qwen-local", "hybrid")
+  modelProfile?: string;
+  // Owner email extracted from workflow input
+  createdByEmail?: string;
 }
 
 // Singleton connection — reused across requests
@@ -162,6 +166,7 @@ export async function startWorkflow(options: {
   webUrl: string;
   repoPath: string;
   pipelineTestingMode?: boolean;
+  createdByEmail?: string;
 }): Promise<{ workflowId: string; runId: string }> {
   const client = await getTemporalClient();
 
@@ -175,6 +180,8 @@ export async function startWorkflow(options: {
     workflowId,
     sessionId: workflowId,
     ...(options.pipelineTestingMode && { pipelineTestingMode: true }),
+    // Store creator email for per-user authorization (AUTHZ-VULN-01 fix)
+    ...(options.createdByEmail && { createdByEmail: options.createdByEmail }),
   };
 
   const handle = await client.workflow.start('pentestPipelineWorkflow', {
@@ -187,11 +194,31 @@ export async function startWorkflow(options: {
 }
 
 /**
+ * Extract owner email from a workflow's input (first history event).
+ */
+async function extractWorkflowInput(client: Client, workflowId: string, runId: string): Promise<Record<string, unknown> | null> {
+  try {
+    const handle = client.workflow.getHandle(workflowId, runId);
+    const history = handle.fetchHistory();
+    for await (const event of (await history).events || []) {
+      const attrs = (event as any).workflowExecutionStartedEventAttributes;
+      if (attrs?.input?.payloads?.[0]?.data) {
+        return JSON.parse(Buffer.from(attrs.input.payloads[0].data).toString('utf-8'));
+      }
+    }
+  } catch { /* history unavailable */ }
+  return null;
+}
+
+/**
  * List workflows enriched with progress data for running ones.
+ * When userEmail is provided, only returns workflows owned by that user
+ * (or legacy workflows without owner info).
  */
 export async function listWorkflowsWithProgress(options?: {
   status?: string;
   pageSize?: number;
+  userEmail?: string;
 }): Promise<WorkflowInfo[]> {
   const workflows = await listWorkflows(options);
 
@@ -199,25 +226,15 @@ export async function listWorkflowsWithProgress(options?: {
   const client = await getTemporalClient();
   const enriched = await Promise.all(
     workflows.map(async (wf) => {
-      let enriched = { ...wf };
+      let enriched: WorkflowInfo = { ...wf };
 
-      // Extract webUrl from workflow input (first history event)
-      try {
-        const handle = client.workflow.getHandle(wf.workflowId, wf.runId);
-        const history = handle.fetchHistory();
-        for await (const event of (await history).events || []) {
-          const attrs = (event as any).workflowExecutionStartedEventAttributes;
-          if (attrs?.input?.payloads?.[0]?.data) {
-            try {
-              const input = JSON.parse(Buffer.from(attrs.input.payloads[0].data).toString('utf-8'));
-              if (input.webUrl) {
-                enriched.webUrl = input.webUrl;
-              }
-            } catch { /* can't decode */ }
-            break;
-          }
-        }
-      } catch { /* history unavailable */ }
+      // Extract webUrl and createdByEmail from workflow input (first history event)
+      const input = await extractWorkflowInput(client, wf.workflowId, wf.runId);
+      if (input) {
+        if (input.webUrl) enriched.webUrl = input.webUrl as string;
+        if (input.modelProfile) enriched.modelProfile = input.modelProfile as string;
+        if (input.createdByEmail) enriched.createdByEmail = input.createdByEmail as string;
+      }
 
       if (wf.status === 'running') {
         const progress = await getWorkflowProgress(wf.workflowId);
@@ -244,6 +261,16 @@ export async function listWorkflowsWithProgress(options?: {
       return enriched;
     })
   );
+
+  // Filter by user email if provided (AUTHZ-VULN-01 fix)
+  if (options?.userEmail) {
+    const userEmail = options.userEmail.toLowerCase();
+    return enriched.filter(wf => {
+      // Legacy workflows without owner are visible to all authenticated users
+      if (!wf.createdByEmail) return true;
+      return wf.createdByEmail.toLowerCase() === userEmail;
+    });
+  }
 
   return enriched;
 }

@@ -6,13 +6,23 @@
 
 /**
  * Server-side sign-out — clears session cookies and redirects to login.
- * This avoids CSRF issues with client-side fetch POST to better-auth.
+ * Uses POST to prevent CSRF via GET-based forced logout.
  */
 
 import type { APIRoute } from 'astro';
 import { auth } from '../../../lib/auth';
 
-export const GET: APIRoute = async ({ request, redirect }) => {
+export const POST: APIRoute = async ({ request, redirect }) => {
+  // Validate Origin header to prevent CSRF
+  const origin = request.headers.get('origin');
+  const host = request.headers.get('host');
+  if (origin && host && !origin.includes(host)) {
+    return new Response(JSON.stringify({ error: 'Invalid origin' }), {
+      status: 403,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
   try {
     // Revoke the session server-side
     await auth.api.signOut({ headers: request.headers });
@@ -38,4 +48,15 @@ export const GET: APIRoute = async ({ request, redirect }) => {
   }
 
   return new Response(null, { status: 302, headers });
+};
+
+// Reject GET requests with a helpful message
+export const GET: APIRoute = async () => {
+  return new Response(JSON.stringify({ error: 'Use POST to sign out' }), {
+    status: 405,
+    headers: {
+      'Content-Type': 'application/json',
+      'Allow': 'POST',
+    },
+  });
 };

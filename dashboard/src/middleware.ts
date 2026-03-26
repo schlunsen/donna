@@ -59,6 +59,7 @@ const SECURITY_HEADERS: Record<string, string> = {
   'X-XSS-Protection': '1; mode=block',
   'Referrer-Policy': 'strict-origin-when-cross-origin',
   'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
+  'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
 };
 
 function addSecurityHeaders(response: Response): Response {
@@ -71,8 +72,8 @@ function addSecurityHeaders(response: Response): Response {
 export const onRequest = defineMiddleware(async ({ request, redirect, locals }, next) => {
   const url = new URL(request.url);
 
-  // --- Rate limiting for API endpoints ---
-  if (url.pathname.startsWith('/api/') && !url.pathname.startsWith('/api/auth')) {
+  // --- Rate limiting for ALL API endpoints (including auth) ---
+  if (url.pathname.startsWith('/api/')) {
     const clientIp = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
       || request.headers.get('x-real-ip')
       || 'unknown';
