@@ -17,6 +17,10 @@ import type { SessionData, DetailedFinding } from '../../../lib/audit-logs.js';
 
 const { runId } = Astro.params;
 
+// Validate runId format to prevent Temporal query injection (INJ-VULN-01/02 fix)
+const RUN_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const isValidRunId = runId && RUN_ID_PATTERN.test(runId);
+
 interface WorkflowDetail {
     workflowId: string;
     runId: string;
@@ -52,9 +56,12 @@ let sessionData: SessionData | null = null;
 let findings: DetailedFinding[] = [];
 
 try {
+    if (!isValidRunId) {
+        throw new Error('Invalid runId format');
+    }
     const client = await getTemporalClient();
 
-    // Find workflow by runId
+    // Find workflow by runId (safe — validated as UUID above)
     let workflowId: string | null = null;
     for await (const w of client.workflow.list({ query: `RunId = "${runId}"` })) {
         workflowId = w.workflowId;
@@ -188,7 +195,7 @@ let hasParentComparison = false;
 let findingComparisonMap: Map<string, 'fixed' | 'still-present' | 'new'> = new Map();
 let fixedFindingsCount = 0;
 
-if (parentRunIdValue && findings.length > 0) {
+if (parentRunIdValue && RUN_ID_PATTERN.test(parentRunIdValue) && findings.length > 0) {
     try {
         const client = await getTemporalClient();
         let parentWorkflowId: string | null = null;
@@ -485,6 +492,16 @@ const totalDurationSec = Math.round((progress?.summary?.totalDurationMs ?? sessi
                                                 {(wf.input as any).webUrl}
                                                 <span class="target-link-icon">↗</span>
                                             </a>
+                                        </span>
+                                    </div>
+                                )}
+                                {(wf.input as any)?.modelProfile && (
+                                    <div class="wf-info-item">
+                                        <span class="wf-info-label">Model</span>
+                                        <span class="wf-info-value">
+                                            <span class={`model-badge ${(wf.input as any).modelProfile === 'claude' ? 'model-claude' : (wf.input as any).modelProfile === 'hybrid' ? 'model-hybrid' : 'model-custom'}`}>
+                                                {(wf.input as any).modelProfile}
+                                            </span>
                                         </span>
                                     </div>
                                 )}

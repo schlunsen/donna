@@ -15,6 +15,10 @@ import { marked } from 'marked';
 const donnaVersion = getVersion();
 const { runId } = Astro.params;
 
+// Validate runId format to prevent Temporal query injection (INJ-VULN-03 fix)
+const RUN_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const isValidRunId = runId && RUN_ID_PATTERN.test(runId);
+
 // ── Data Fetching ──────────────────────────────────────────────────────────────
 
 let workflowId: string | null = null;
@@ -30,9 +34,12 @@ let comprehensiveReport: ComprehensiveReport | null = null;
 let loadError: string | null = null;
 
 try {
+    if (!isValidRunId) {
+        throw new Error('Invalid runId format');
+    }
     const client = await getTemporalClient();
 
-    // Find workflow by runId
+    // Find workflow by runId (safe — validated as UUID above)
     for await (const w of client.workflow.list({ query: `RunId = "${runId}"` })) {
         workflowId = w.workflowId;
         break;
@@ -104,10 +111,10 @@ type ComparisonStatus = 'fixed' | 'still-present' | 'new';
 let findingComparison: Map<string, ComparisonStatus> = new Map();
 let fixedFindings: DetailedFinding[] = [];
 
-if (parentRunIdValue) {
+if (parentRunIdValue && RUN_ID_PATTERN.test(parentRunIdValue)) {
     try {
         const client = await getTemporalClient();
-        // Find parent workflow by runId
+        // Find parent workflow by runId (safe — validated as UUID above)
         for await (const w of client.workflow.list({ query: `RunId = "${parentRunIdValue}"` })) {
             parentWorkflowId = w.workflowId;
             break;
@@ -372,6 +379,11 @@ const tocCategories = Object.entries(findingsByCategory).map(([cat, catFindings]
                                 <span class="cover-meta-icon">&#9881;</span>
                                 <span class="cover-meta-label">Agents</span>
                                 <span class="cover-meta-value">{agents.length}</span>
+                            </div>
+                            <div class="cover-meta-item">
+                                <span class="cover-meta-icon">&#10070;</span>
+                                <span class="cover-meta-label">Model</span>
+                                <span class="cover-meta-value">{(wfInput as any)?.modelProfile || 'claude'}</span>
                             </div>
                         </div>
                     </div>
