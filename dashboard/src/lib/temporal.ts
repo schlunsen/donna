@@ -194,9 +194,10 @@ export async function startWorkflow(options: {
 }
 
 /**
- * Extract owner email from a workflow's input (first history event).
+ * Extract workflow input from the first history event.
+ * Returns the parsed input object or null.
  */
-async function extractWorkflowInput(client: Client, workflowId: string, runId: string): Promise<Record<string, unknown> | null> {
+export async function extractWorkflowInput(client: Client, workflowId: string, runId: string): Promise<Record<string, unknown> | null> {
   try {
     const handle = client.workflow.getHandle(workflowId, runId);
     const history = handle.fetchHistory();
@@ -208,6 +209,29 @@ async function extractWorkflowInput(client: Client, workflowId: string, runId: s
     }
   } catch { /* history unavailable */ }
   return null;
+}
+
+/**
+ * List workflow IDs owned by a specific user (lightweight — no progress enrichment).
+ * Used for authorization checks without the overhead of full progress/result fetching.
+ */
+export async function listUserWorkflowIds(userEmail: string): Promise<Set<string>> {
+  const workflows = await listWorkflows();
+  const client = await getTemporalClient();
+  const ids = new Set<string>();
+
+  await Promise.all(
+    workflows.map(async (wf) => {
+      const input = await extractWorkflowInput(client, wf.workflowId, wf.runId);
+      const owner = input?.createdByEmail as string | undefined;
+      // Include if owned by user, or legacy (no owner)
+      if (!owner || owner.toLowerCase() === userEmail.toLowerCase()) {
+        ids.add(wf.workflowId);
+      }
+    })
+  );
+
+  return ids;
 }
 
 /**

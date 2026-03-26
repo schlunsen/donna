@@ -13,7 +13,7 @@
 
 import type { APIRoute } from 'astro';
 import { listWorkspaces } from '../../lib/audit-logs.js';
-import { listWorkflowsWithProgress } from '../../lib/temporal.js';
+import { listUserWorkflowIds } from '../../lib/temporal.js';
 
 export const GET: APIRoute = async ({ locals }) => {
   const session = (locals as any).session;
@@ -26,25 +26,15 @@ export const GET: APIRoute = async ({ locals }) => {
   }
 
   try {
-    const userEmail = session.user.email.toLowerCase();
-
     // Get all workspaces from audit-logs
     const allWorkspaces = await listWorkspaces();
 
-    // Get user's workflows from Temporal to determine which workspaces belong to them
-    const userWorkflows = await listWorkflowsWithProgress({
-      userEmail: session.user.email,
-    });
-
-    // Build a set of workflow IDs owned by the user
-    const userWorkflowIds = new Set(userWorkflows.map(wf => wf.workflowId));
+    // Get user's workflow IDs (lightweight — no progress enrichment)
+    const userWorkflowIds = await listUserWorkflowIds(session.user.email);
 
     // Filter workspaces to only those belonging to the user's workflows
     // Workspace names correspond to workflow IDs
-    const workspaces = allWorkspaces.filter(ws => {
-      // Check if the workspace name matches any of the user's workflow IDs
-      return userWorkflowIds.has(ws.name);
-    });
+    const workspaces = allWorkspaces.filter(ws => userWorkflowIds.has(ws.name));
 
     return new Response(JSON.stringify({ workspaces }), {
       status: 200,

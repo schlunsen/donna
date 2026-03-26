@@ -38,28 +38,28 @@ async function findWorkflow(runId: string) {
 }
 
 /**
- * Extract the owner email from workflow input (first history event).
+ * Extract the owner email from a pre-fetched history (avoids double fetch).
  */
-async function getWorkflowOwner(handle: any): Promise<string | null> {
-  try {
-    const history = await handle.fetchHistory();
-    for (const ev of history?.events || []) {
-      const attrs = (ev as any).workflowExecutionStartedEventAttributes;
-      if (attrs?.input?.payloads?.[0]?.data) {
+function getOwnerFromHistory(history: any): string | null {
+  for (const ev of history?.events || []) {
+    const attrs = (ev as any).workflowExecutionStartedEventAttributes;
+    if (attrs?.input?.payloads?.[0]?.data) {
+      try {
         const input = JSON.parse(Buffer.from(attrs.input.payloads[0].data).toString('utf-8'));
         return input.createdByEmail || null;
-      }
+      } catch { /* can't decode */ }
     }
-  } catch { /* history unavailable */ }
+  }
   return null;
 }
 
 /**
  * Verify the authenticated user owns this workflow (AUTHZ-VULN-03 fix).
+ * Accepts a pre-fetched history to avoid redundant fetches.
  * Returns true if user owns the workflow or if the workflow has no owner (legacy).
  */
-async function verifyOwnership(handle: any, userEmail: string): Promise<boolean> {
-  const ownerEmail = await getWorkflowOwner(handle);
+function verifyOwnershipFromHistory(history: any, userEmail: string): boolean {
+  const ownerEmail = getOwnerFromHistory(history);
   // Legacy workflows without owner are accessible to all authenticated users
   if (!ownerEmail) return true;
   return ownerEmail.toLowerCase() === userEmail.toLowerCase();
@@ -94,8 +94,14 @@ export const GET: APIRoute = async ({ params, url, locals }) => {
 
     const { handle } = found;
 
+    // Fetch history once — used for ownership check and event display
+    let fullHistory: any = null;
+    try {
+      fullHistory = await handle.fetchHistory();
+    } catch { /* history unavailable */ }
+
     // Verify the authenticated user owns this workflow
-    if (!await verifyOwnership(handle, session.user.email)) {
+    if (!verifyOwnershipFromHistory(fullHistory, session.user.email)) {
       return new Response(JSON.stringify({ error: 'Workflow not found' }), {
         status: 404,
         headers: { 'Content-Type': 'application/json' },
@@ -193,11 +199,10 @@ export const GET: APIRoute = async ({ params, url, locals }) => {
       }
     }
 
-    // Fetch history events (last 50)
+    // Reuse pre-fetched history for event display (last 50)
     try {
       const history: Array<Record<string, unknown>> = [];
-      const fullHistory = await handle.fetchHistory();
-      const events = fullHistory.events || [];
+      const events = fullHistory?.events || [];
 
       for (const event of events.slice(-50)) {
         history.push({
@@ -264,8 +269,11 @@ export const POST: APIRoute = async ({ params, url, locals }) => {
 
     const { handle, client } = found;
 
+    // Fetch history once — used for ownership check and restart input extraction
+    const history = await handle.fetchHistory();
+
     // Verify the authenticated user owns this workflow
-    if (!await verifyOwnership(handle, session.user.email)) {
+    if (!verifyOwnershipFromHistory(history, session.user.email)) {
       return new Response(JSON.stringify({ error: 'Workflow not found' }), {
         status: 404,
         headers: { 'Content-Type': 'application/json' },
@@ -289,8 +297,7 @@ export const POST: APIRoute = async ({ params, url, locals }) => {
     }
 
     if (action === 'restart' || action === 'start-new') {
-      // Extract original input from workflow history
-      const history = await handle.fetchHistory();
+      // Extract original input from pre-fetched history
       const startEvent = history?.events?.find(
         (e: Record<string, unknown>) => String(e.eventType).includes('WORKFLOW_EXECUTION_STARTED')
           || String(e.eventType) === '1'
