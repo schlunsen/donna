@@ -1180,6 +1180,48 @@ const totalDurationSec = Math.round((progress?.summary?.totalDurationMs ?? sessi
         </main>
     </div>
 
+    {/* Model Profile Picker Modal */}
+    <div id="modelProfileModal" class="modal-overlay" style="display:none;">
+        <div class="modal-dialog">
+            <div class="modal-header">
+                <h3>Start New Scan</h3>
+                <button class="modal-close" id="modelProfileModalClose">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="margin-bottom: 1rem; color: var(--text-secondary);">
+                    Choose a model profile for the new scan, or keep the original.
+                </p>
+                <div class="model-profile-options" id="modelProfileOptions">
+                    <label class="model-option selected" data-profile="">
+                        <input type="radio" name="modelProfile" value="" checked />
+                        <span class="model-option-inner">
+                            <span class="model-option-name">Same as original</span>
+                            <span class="model-option-desc" id="originalProfileLabel">Use the same model profile as the parent workflow</span>
+                        </span>
+                    </label>
+                    <label class="model-option" data-profile="claude">
+                        <input type="radio" name="modelProfile" value="claude" />
+                        <span class="model-option-inner">
+                            <span class="model-option-name"><span class="model-badge model-claude">claude</span></span>
+                            <span class="model-option-desc">Default Anthropic Claude models</span>
+                        </span>
+                    </label>
+                    <label class="model-option" data-profile="hybrid">
+                        <input type="radio" name="modelProfile" value="hybrid" />
+                        <span class="model-option-inner">
+                            <span class="model-option-name"><span class="model-badge model-hybrid">hybrid</span></span>
+                            <span class="model-option-desc">Mix of providers per tier (e.g. local small, Claude large)</span>
+                        </span>
+                    </label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="modelProfileCancelBtn">Cancel</button>
+                <button class="btn btn-primary" id="modelProfileStartBtn">Start Scan</button>
+            </div>
+        </div>
+    </div>
+
     {/* Tab switching + Query runner + More Actions + History views */}
     <script is:inline>
         // ── Tab switching ──────────────────────────
@@ -1397,10 +1439,61 @@ const totalDurationSec = Math.round((progress?.summary?.totalDurationMs ?? sessi
                             setTimeout(() => { item.innerHTML = origText; }, 1500);
                         }
                     } else if (action === 'start-new') {
-                        if (confirm('Start a new workflow with the same target and folder? The new run will be linked to this one for comparison.')) {
+                        // Show model profile picker modal
+                        const modal = document.getElementById('modelProfileModal');
+                        const startBtn = document.getElementById('modelProfileStartBtn');
+                        const cancelBtn = document.getElementById('modelProfileCancelBtn');
+                        const closeBtn = document.getElementById('modelProfileModalClose');
+                        const originalLabel = document.getElementById('originalProfileLabel');
+
+                        // Show the original model profile in the label
+                        const wfInfoItems = document.querySelectorAll('.wf-info-item');
+                        let currentProfile = '';
+                        wfInfoItems.forEach(el => {
+                            const label = el.querySelector('.wf-info-label');
+                            if (label && label.textContent === 'Model') {
+                                const badge = el.querySelector('.model-badge');
+                                if (badge) currentProfile = badge.textContent.trim();
+                            }
+                        });
+                        if (originalLabel) {
+                            originalLabel.textContent = currentProfile
+                                ? `Keep "${currentProfile}" from the parent workflow`
+                                : 'Use default model (no profile was set)';
+                        }
+
+                        // Highlight selected option
+                        document.querySelectorAll('.model-option').forEach(opt => {
+                            opt.classList.remove('selected');
+                            const radio = opt.querySelector('input[type="radio"]');
+                            if (radio && radio.checked) opt.classList.add('selected');
+                            opt.addEventListener('click', () => {
+                                document.querySelectorAll('.model-option').forEach(o => o.classList.remove('selected'));
+                                opt.classList.add('selected');
+                                const r = opt.querySelector('input[type="radio"]');
+                                if (r) r.checked = true;
+                            });
+                        });
+
+                        modal.style.display = 'flex';
+
+                        const closeModal = () => { modal.style.display = 'none'; };
+                        cancelBtn.onclick = closeModal;
+                        closeBtn.onclick = closeModal;
+                        modal.onclick = (e) => { if (e.target === modal) closeModal(); };
+
+                        startBtn.onclick = async () => {
+                            const selected = document.querySelector('input[name="modelProfile"]:checked');
+                            const selectedProfile = selected ? selected.value : '';
+                            closeModal();
                             try {
-                                const runId = item.dataset.runId;
-                                const res = await fetch('/api/workflow/' + runId + '?action=start-new', { method: 'POST' });
+                                const wfRunId = item.dataset.runId;
+                                const fetchOptions = {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify(selectedProfile ? { modelProfile: selectedProfile } : {}),
+                                };
+                                const res = await fetch('/api/workflow/' + wfRunId + '?action=start-new', fetchOptions);
                                 const data = await res.json();
                                 if (res.ok && data.newRunId) {
                                     window.location.href = '/workflow/' + data.newRunId;
@@ -1410,7 +1503,7 @@ const totalDurationSec = Math.round((progress?.summary?.totalDurationMs ?? sessi
                             } catch (err) {
                                 alert('Error: ' + err.message);
                             }
-                        }
+                        };
                     } else if (action === 'restart') {
                         if (confirm('Restart this workflow with the same configuration?')) {
                             try {

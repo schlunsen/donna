@@ -319,7 +319,7 @@ export async function runPreflightValidation(input: ActivityInput): Promise<void
     const logger = createActivityLogger();
     logger.info('Running preflight validation...', { attempt: attemptNumber });
 
-    const result = await runPreflightChecks(input.repoPath, input.configPath, logger);
+    const result = await runPreflightChecks(input.repoPath, input.configPath, logger, input.modelProfile);
 
     if (isErr(result)) {
       const classified = classifyErrorForTemporal(result.error);

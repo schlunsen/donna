@@ -66,10 +66,11 @@ export const POST: APIRoute = async ({ request, locals }) => {
 
   try {
     const body = await request.json();
-    const { webUrl, repoPath, pipelineTestingMode } = body as {
+    const { webUrl, repoPath, pipelineTestingMode, modelProfile } = body as {
       webUrl?: string;
       repoPath?: string;
       pipelineTestingMode?: boolean;
+      modelProfile?: string;
     };
 
     if (!webUrl || !repoPath) {
@@ -94,6 +95,7 @@ export const POST: APIRoute = async ({ request, locals }) => {
       repoPath,
       pipelineTestingMode,
       createdByEmail: session.user.email,
+      modelProfile,
     });
 
     return new Response(JSON.stringify(result), {

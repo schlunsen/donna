@@ -29,6 +29,7 @@ interface WorkflowRow {
     totalAgents: number;
     costUsd: number;
     findingSummary: FindingSummary | null;
+    modelProfile: string;
 }
 
 let workflows: WorkflowRow[] = [];
@@ -75,6 +76,7 @@ try {
             totalAgents: wf.progress?.summary?.agentCount || 13,
             costUsd: wf.progress?.summary?.totalCostUsd || 0,
             findingSummary: wf.progress?.findingSummary || null,
+            modelProfile: wf.modelProfile || 'claude',
         };
     });
 
@@ -288,7 +290,7 @@ if (periodFilter === 'hour') activeFilterLabel = 'Last Hour';
                                 <th>Status</th>
                                 <th class="sortable sorted" data-sort="id">Workflow ID ↓</th>
                                 <th>Run ID</th>
-                                <th>Type</th>
+                                <th>Model</th>
                                 <th>Target</th>
                                 <th>Findings</th>
                                 <th>Start</th>
@@ -318,7 +320,11 @@ if (periodFilter === 'hour') activeFilterLabel = 'Last Hour';
                                     <td>
                                         <span class="cell-runid" title={wf.runId}>{wf.runId.slice(0, 8)}…</span>
                                     </td>
-                                    <td class="cell-type">{wf.type}</td>
+                                    <td class="cell-type">
+                                        <span class={`model-badge ${wf.modelProfile === 'claude' ? 'model-claude' : wf.modelProfile === 'hybrid' ? 'model-hybrid' : 'model-custom'}`}>
+                                            {wf.modelProfile}
+                                        </span>
+                                    </td>
                                     <td class="cell-type">
                                         {wf.targetUrl ? (
                                             <a href={wf.targetUrl} target="_blank" rel="noopener noreferrer" class="target-link">
