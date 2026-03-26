@@ -16,6 +16,7 @@ import type {
   Rule,
   Authentication,
   DistributedConfig,
+  ModelProfile,
 } from './types/config.js';
 
 // Handle ESM/CJS interop for ajv-formats using require
@@ -532,15 +533,54 @@ const sanitizeRule = (rule: Rule): Rule => {
   };
 };
 
-export const distributeConfig = (config: Config | null): DistributedConfig => {
+/**
+ * Resolve which model profile is active, given config + optional CLI override.
+ */
+export function resolveActiveProfile(
+  config: Config | null,
+  profileOverride?: string
+): ModelProfile | undefined {
+  const modelsConfig = config?.models;
+  if (!modelsConfig?.profiles) return undefined;
+
+  const profileName = profileOverride
+    ?? config?.pipeline?.model_profile
+    ?? modelsConfig.default_profile;
+
+  if (!profileName) return undefined;
+
+  const profile = modelsConfig.profiles[profileName];
+  if (!profile) {
+    throw new PentestError(
+      `Model profile "${profileName}" not found. Available profiles: ${Object.keys(modelsConfig.profiles).join(', ')}`,
+      'config',
+      false,
+      { profileName, availableProfiles: Object.keys(modelsConfig.profiles) },
+      ErrorCode.CONFIG_VALIDATION_FAILED
+    );
+  }
+
+  return profile;
+}
+
+export const distributeConfig = (
+  config: Config | null,
+  profileOverride?: string
+): DistributedConfig => {
   const avoid = config?.rules?.avoid || [];
   const focus = config?.rules?.focus || [];
   const authentication = config?.authentication || null;
+
+  // Resolve model profile and tier overrides
+  const modelProfile = resolveActiveProfile(config, profileOverride);
+  const modelTiers = config?.pipeline?.model_tiers;
 
   return {
     avoid: avoid.map(sanitizeRule),
     focus: focus.map(sanitizeRule),
     authentication: authentication ? sanitizeAuthentication(authentication) : null,
+    ...(modelProfile && { modelProfile }),
+    ...(modelTiers && { modelTiers }),
   };
 };
 

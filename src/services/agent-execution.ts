@@ -45,7 +45,7 @@ import type { AgentName } from '../types/agents.js';
 import type { ConfigLoaderService } from './config-loader.js';
 import type { AgentMetrics } from '../types/metrics.js';
 import type { TurnBuffer } from '../temporal/activities.js';
-import type { ModelTier } from '../ai/models.js';
+import { resolveModelFromProfile, type ModelTier } from '../ai/models.js';
 import { BudgetMonitor } from './budget-monitor.js';
 
 /**
@@ -150,17 +150,23 @@ export class AgentExecutionService {
     }
 
     // 4. Resolve model tier: config override > agent definition > default 'medium'
-    const configModelTiers = distributedConfig
-      ? (distributedConfig as unknown as { modelTiers?: Record<string, string> }).modelTiers
-      : undefined;
+    const configModelTiers = distributedConfig?.modelTiers;
     const resolvedTier: ModelTier = (
       configModelTiers?.[agentName] ??
       AGENTS[agentName].modelTier ??
       'medium'
     ) as ModelTier;
 
+    // 4b. Resolve model profile from distributed config
+    const modelProfile = distributedConfig?.modelProfile;
+
     // 5. Create budget monitor for real-time cost tracking
     const budgetMonitor = BudgetMonitor.forTier(agentName, resolvedTier, logger);
+
+    if (modelProfile) {
+      const resolved = resolveModelFromProfile(resolvedTier, modelProfile);
+      logger.info(`Agent ${agentName}: tier=${resolvedTier}, model=${resolved.model}, endpoint=${resolved.base_url ?? 'anthropic'}`);
+    }
 
     // 6. Start audit logging
     await auditSession.startAgent(agentName, prompt, attemptNumber);
@@ -175,7 +181,8 @@ export class AgentExecutionService {
       auditSession,
       logger,
       resolvedTier,
-      turnBuffer
+      turnBuffer,
+      modelProfile
     );
 
     // 7b. Update budget monitor with final cost

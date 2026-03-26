@@ -24,6 +24,13 @@ import type { DistributedConfig } from '../types/config.js';
  * allowing callers to decide how to handle failures.
  */
 export class ConfigLoaderService {
+  /** Optional model profile override from CLI (--model-profile). */
+  private profileOverride: string | undefined;
+
+  constructor(profileOverride?: string) {
+    this.profileOverride = profileOverride;
+  }
+
   /**
    * Load and distribute a configuration file.
    *
@@ -33,7 +40,7 @@ export class ConfigLoaderService {
   async load(configPath: string): Promise<Result<DistributedConfig, PentestError>> {
     try {
       const config = await parseConfig(configPath);
-      const distributed = distributeConfig(config);
+      const distributed = distributeConfig(config, this.profileOverride);
       return ok(distributed);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);

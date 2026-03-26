@@ -22,6 +22,7 @@ export interface PipelineInput {
   resumeFromWorkspace?: string; // Workspace name to resume from
   terminatedWorkflows?: string[]; // Workflows terminated during resume
   parentRunId?: string; // Run ID of the parent workflow this was started from
+  modelProfile?: string; // Model profile name override (from --model-profile CLI flag)
 }
 
 export interface ResumeState {

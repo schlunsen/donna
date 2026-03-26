@@ -53,6 +53,8 @@ export interface Config {
   authentication?: Authentication;
   pipeline?: PipelineConfig;
   continuous?: ContinuousConfig;
+  /** Model profiles for multi-provider support. */
+  models?: ModelsConfig;
 }
 
 export type RetryPreset = 'default' | 'subscription';
@@ -67,6 +69,50 @@ export interface ConcurrencyConfig {
 /** Per-agent model tier overrides. Keys are AgentName values. */
 export type ModelTierOverrides = Record<string, 'small' | 'medium' | 'large'>;
 
+// ── Model Profiles ──────────────────────────────────────────────
+
+/** Per-tier endpoint override (Phase 2: hybrid profiles). */
+export interface TierEndpoint {
+  base_url: string;
+  api_key_env?: string;
+}
+
+/**
+ * A named model profile that defines which models and endpoint to use.
+ *
+ * Phase 1: Single provider per profile (base_url + tiers).
+ * Phase 2: Per-tier endpoint overrides via tier_endpoints (hybrid profiles).
+ * Phase 3: Per-agent profile references via model_tiers agent-level overrides.
+ */
+export interface ModelProfile {
+  /** API base URL. Omit for default Anthropic API. */
+  base_url?: string;
+  /** Environment variable name holding the API key (default: ANTHROPIC_API_KEY). */
+  api_key_env?: string;
+  /** Model ID for each tier. */
+  tiers: {
+    small: string;
+    medium: string;
+    large: string;
+  };
+  /** Per-tier endpoint overrides for hybrid profiles (Phase 2). */
+  tier_endpoints?: Partial<Record<'small' | 'medium' | 'large', TierEndpoint>>;
+}
+
+/** Top-level models configuration section. */
+export interface ModelsConfig {
+  profiles: Record<string, ModelProfile>;
+  /** Default profile name. Falls back to 'claude' if not specified. */
+  default_profile?: string;
+}
+
+/** Resolved endpoint info for a single model execution. */
+export interface ResolvedModelEndpoint {
+  model: string;
+  base_url?: string | undefined;
+  api_key_env?: string | undefined;
+}
+
 export interface PipelineConfig {
   retry_preset?: RetryPreset;
   max_concurrent_pipelines?: number;
@@ -76,6 +122,8 @@ export interface PipelineConfig {
   concurrency?: ConcurrencyConfig;
   /** Override default model tiers for specific agents */
   model_tiers?: ModelTierOverrides;
+  /** Model profile to use for this scan (overrides models.default_profile) */
+  model_profile?: string;
 }
 
 // ── Continuous Scanning Config ──────────────────────────────────
@@ -110,4 +158,8 @@ export interface DistributedConfig {
   avoid: Rule[];
   focus: Rule[];
   authentication: Authentication | null;
+  /** Active model profile (resolved from config + CLI override). */
+  modelProfile?: ModelProfile;
+  /** Per-agent model tier overrides from config. */
+  modelTiers?: ModelTierOverrides;
 }

@@ -184,6 +184,7 @@ export async function pentestPipelineWorkflow(
     ...(input.pipelineTestingMode !== undefined && {
       pipelineTestingMode: input.pipelineTestingMode,
     }),
+    ...(input.modelProfile !== undefined && { modelProfile: input.modelProfile }),
   };
 
   let resumeState: ResumeState | null = null;

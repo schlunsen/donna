@@ -32,6 +32,8 @@ import { ExploitationCheckerService } from './exploitation-checker.js';
  */
 export interface ContainerDependencies {
   readonly sessionMetadata: SessionMetadata;
+  /** Model profile name override from CLI --model-profile flag. */
+  readonly modelProfileOverride?: string | undefined;
 }
 
 /**
@@ -53,7 +55,7 @@ export class Container {
     this.sessionMetadata = deps.sessionMetadata;
 
     // Wire services with explicit constructor injection
-    this.configLoader = new ConfigLoaderService();
+    this.configLoader = new ConfigLoaderService(deps.modelProfileOverride);
     this.exploitationChecker = new ExploitationCheckerService();
     this.agentExecution = new AgentExecutionService(this.configLoader);
   }
@@ -77,12 +79,13 @@ const containers = new Map<string, Container>();
  */
 export function getOrCreateContainer(
   workflowId: string,
-  sessionMetadata: SessionMetadata
+  sessionMetadata: SessionMetadata,
+  modelProfileOverride?: string
 ): Container {
   let container = containers.get(workflowId);
 
   if (!container) {
-    container = new Container({ sessionMetadata });
+    container = new Container({ sessionMetadata, modelProfileOverride });
     containers.set(workflowId, container);
   }
 

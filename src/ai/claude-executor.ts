@@ -24,7 +24,8 @@ import { detectExecutionContext, formatErrorOutput, formatCompletionMessage } fr
 import { createProgressManager } from './progress-manager.js';
 import { createAuditLogger } from './audit-logger.js';
 import { getActualModelName } from './router-utils.js';
-import { resolveModel, type ModelTier } from './models.js';
+import { resolveModelFromProfile, type ModelTier } from './models.js';
+import type { ModelProfile, ResolvedModelEndpoint } from '../types/config.js';
 import type { ActivityLogger } from '../types/activity-logger.js';
 import type { TurnBuffer } from '../temporal/activities.js';
 
@@ -222,7 +223,8 @@ export async function runClaudePrompt(
   auditSession: AuditSession | null = null,
   logger: ActivityLogger,
   modelTier: ModelTier = 'medium',
-  turnBuffer?: TurnBuffer
+  turnBuffer?: TurnBuffer,
+  modelProfile?: ModelProfile
 ): Promise<ClaudePromptResult> {
   // 1. Initialize timing and prompt
   const timer = new Timer(`agent-${description.toLowerCase().replace(/\s+/g, '-')}`);
@@ -241,7 +243,14 @@ export async function runClaudePrompt(
   // 3. Configure MCP servers
   const mcpServers = buildMcpServers(sourceDir, agentName, logger);
 
-  // 4. Build env vars to pass to SDK subprocesses
+  // 4. Resolve model and endpoint from profile (or legacy env vars)
+  const endpoint: ResolvedModelEndpoint = resolveModelFromProfile(modelTier, modelProfile);
+
+  if (modelProfile) {
+    logger.info(`Model profile active: model=${endpoint.model}, base_url=${endpoint.base_url ?? 'default'}`);
+  }
+
+  // 5. Build env vars to pass to SDK subprocesses
   const sdkEnv: Record<string, string> = {
     CLAUDE_CODE_MAX_OUTPUT_TOKENS: process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS || '64000',
   };
@@ -284,9 +293,22 @@ export async function runClaudePrompt(
     }
   }
 
-  // 5. Configure SDK options
+  // 5b. Apply model profile endpoint overrides (takes precedence over env passthrough)
+  if (endpoint.base_url) {
+    sdkEnv.ANTHROPIC_BASE_URL = endpoint.base_url;
+  }
+  if (endpoint.api_key_env) {
+    const apiKey = process.env[endpoint.api_key_env];
+    if (apiKey) {
+      sdkEnv.ANTHROPIC_API_KEY = apiKey;
+    } else {
+      logger.warn(`Model profile references env var ${endpoint.api_key_env} but it is not set`);
+    }
+  }
+
+  // 6. Configure SDK options
   const options = {
-    model: resolveModel(modelTier),
+    model: endpoint.model,
     maxTurns: 10_000,
     cwd: sourceDir,
     permissionMode: 'bypassPermissions' as const,

@@ -51,6 +51,7 @@ rules:
 #   concurrency:                        # Fine-grained concurrency limits
 #     pipelines: 3                      # Max concurrent vuln→exploit pipeline pairs (default: 5)
 #     max_browsers: 2                   # Max concurrent Playwright browser instances (default: 3)
+#   model_profile: claude               # Which model profile to use (see 'models' section below)
 #   model_tiers:                        # Override default model tiers per agent
 #     pre-recon: large                  # Default: large (Opus — deep code analysis)
 #     recon: medium                     # Default: medium (Sonnet — general analysis)
@@ -60,3 +61,36 @@ rules:
 #     auth-exploit: large               # Default: large
 #     ssrf-exploit: large               # Default: large
 #     report: small                     # Default: small (Haiku — summarization)
+
+# Model profiles (optional) — define named provider/model configurations
+# Switch between providers by changing pipeline.model_profile or using --model-profile CLI flag
+#
+# models:
+#   default_profile: claude             # Used when no --model-profile CLI flag is given
+#   profiles:
+#     # Default Claude profile — uses Anthropic API directly
+#     claude:
+#       tiers:
+#         small: claude-haiku-4-5-20251001
+#         medium: claude-sonnet-4-6
+#         large: claude-opus-4-6
+#
+#     # Local LLM via LiteLLM proxy — all tiers use the same model
+#     qwen-local:
+#       base_url: "http://your-server:4000"
+#       api_key_env: LITELLM_API_KEY    # env var holding the LiteLLM API key
+#       tiers:
+#         small: qwen3.5
+#         medium: qwen3.5
+#         large: qwen3.5
+#
+#     # Hybrid — Claude for complex tasks, local LLM for light tasks
+#     hybrid:
+#       tiers:
+#         small: qwen3.5                # Report generation → cheap local model
+#         medium: claude-sonnet-4-6     # Vuln analysis → Claude
+#         large: claude-opus-4-6        # Exploitation → Claude
+#       tier_endpoints:
+#         small:                        # Only the 'small' tier routes to LiteLLM
+#           base_url: "http://your-server:4000"
+#           api_key_env: LITELLM_API_KEY

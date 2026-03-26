@@ -14,7 +14,12 @@
  *
  * Users override via ANTHROPIC_SMALL_MODEL / ANTHROPIC_MEDIUM_MODEL / ANTHROPIC_LARGE_MODEL,
  * which works across all providers (direct, Bedrock, Vertex).
+ *
+ * Model profiles (Phase 1-3) allow per-scan and per-agent provider/model selection
+ * via the `models` section in YAML config.
  */
+
+import type { ModelProfile, ResolvedModelEndpoint } from '../types/config.js';
 
 export type ModelTier = 'small' | 'medium' | 'large';
 
@@ -24,7 +29,16 @@ const DEFAULT_MODELS: Readonly<Record<ModelTier, string>> = {
   large: 'claude-opus-4-6',
 };
 
-/** Resolve a model tier to a concrete model ID. */
+/** Built-in Claude profile used when no custom profile is configured. */
+export const BUILTIN_CLAUDE_PROFILE: ModelProfile = {
+  tiers: {
+    small: DEFAULT_MODELS.small,
+    medium: DEFAULT_MODELS.medium,
+    large: DEFAULT_MODELS.large,
+  },
+};
+
+/** Resolve a model tier to a concrete model ID (legacy path, env-var based). */
 export function resolveModel(tier: ModelTier = 'medium'): string {
   switch (tier) {
     case 'small':
@@ -34,4 +48,40 @@ export function resolveModel(tier: ModelTier = 'medium'): string {
     default:
       return process.env.ANTHROPIC_MEDIUM_MODEL || DEFAULT_MODELS.medium;
   }
+}
+
+/**
+ * Resolve a model tier using a profile, returning full endpoint info.
+ *
+ * Resolution priority:
+ * 1. Profile tier_endpoints override (Phase 2 — hybrid profiles)
+ * 2. Profile tiers + base_url (Phase 1 — single provider)
+ * 3. Env var override (ANTHROPIC_SMALL_MODEL etc.)
+ * 4. Built-in defaults
+ */
+export function resolveModelFromProfile(
+  tier: ModelTier = 'medium',
+  profile?: ModelProfile
+): ResolvedModelEndpoint {
+  // No profile — fall back to legacy env-var resolution
+  if (!profile) {
+    return { model: resolveModel(tier) };
+  }
+
+  // Phase 2: Check for per-tier endpoint override
+  const tierEndpoint = profile.tier_endpoints?.[tier];
+  if (tierEndpoint) {
+    return {
+      model: profile.tiers[tier],
+      base_url: tierEndpoint.base_url,
+      api_key_env: tierEndpoint.api_key_env ?? profile.api_key_env,
+    };
+  }
+
+  // Phase 1: Use profile's tiers and base_url
+  return {
+    model: profile.tiers[tier],
+    base_url: profile.base_url,
+    api_key_env: profile.api_key_env,
+  };
 }
