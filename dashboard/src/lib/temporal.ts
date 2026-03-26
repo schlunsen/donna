@@ -167,6 +167,7 @@ export async function startWorkflow(options: {
   repoPath: string;
   pipelineTestingMode?: boolean;
   createdByEmail?: string;
+  modelProfile?: string;
 }): Promise<{ workflowId: string; runId: string }> {
   const client = await getTemporalClient();
 
@@ -182,6 +183,8 @@ export async function startWorkflow(options: {
     ...(options.pipelineTestingMode && { pipelineTestingMode: true }),
     // Store creator email for per-user authorization (AUTHZ-VULN-01 fix)
     ...(options.createdByEmail && { createdByEmail: options.createdByEmail }),
+    // Model profile for multi-provider LLM support
+    ...(options.modelProfile && { modelProfile: options.modelProfile }),
   };
 
   const handle = await client.workflow.start('pentestPipelineWorkflow', {

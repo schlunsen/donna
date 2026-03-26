@@ -36,6 +36,9 @@ services:
       - ANTHROPIC_MEDIUM_MODEL=${ANTHROPIC_MEDIUM_MODEL:-}
       - ANTHROPIC_LARGE_MODEL=${ANTHROPIC_LARGE_MODEL:-}
       - CLAUDE_CODE_MAX_OUTPUT_TOKENS=${CLAUDE_CODE_MAX_OUTPUT_TOKENS:-64000}
+      - LITELLM_API_KEY=${LITELLM_API_KEY:-}  # API key for LiteLLM proxy (model profiles)
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       temporal:
         condition: service_healthy

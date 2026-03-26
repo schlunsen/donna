@@ -23,9 +23,10 @@ import type { SDKAssistantMessageError } from '@anthropic-ai/claude-agent-sdk';
 import { PentestError, isRetryableError } from './error-handling.js';
 import { ErrorCode } from '../types/errors.js';
 import { type Result, ok, err } from '../types/result.js';
-import { parseConfig } from '../config-parser.js';
+import { parseConfig, resolveActiveProfile } from '../config-parser.js';
 import { resolveModel } from '../ai/models.js';
 import type { ActivityLogger } from '../types/activity-logger.js';
+import type { Config } from '../types/config.js';
 import { validateChromiumAvailability } from './browser-pool.js';
 
 // === Repository Validation ===
@@ -159,12 +160,37 @@ function classifySdkError(
 
 /** Validate credentials via a minimal Claude Agent SDK query. */
 async function validateCredentials(
-  logger: ActivityLogger
+  logger: ActivityLogger,
+  config?: Config | null,
+  modelProfileOverride?: string
 ): Promise<Result<void, PentestError>> {
-  // 1. Router mode — can't validate provider keys, just warn
+  // 1a. Router mode — can't validate provider keys, just warn
   if (process.env.ANTHROPIC_BASE_URL) {
     logger.warn('Router mode detected — skipping API credential validation');
     return ok(undefined);
+  }
+
+  // 1b. Model profile with custom base_url — skip Anthropic validation
+  try {
+    const profile = resolveActiveProfile(config ?? null, modelProfileOverride);
+    if (profile?.base_url) {
+      logger.info(`Model profile with custom endpoint (${profile.base_url}) — skipping Anthropic credential validation`);
+      // Verify the profile's API key env var is set
+      if (profile.api_key_env && !process.env[profile.api_key_env]) {
+        return err(
+          new PentestError(
+            `Model profile requires env var ${profile.api_key_env} but it is not set`,
+            'config',
+            false,
+            { apiKeyEnv: profile.api_key_env },
+            ErrorCode.AUTH_FAILED
+          )
+        );
+      }
+      return ok(undefined);
+    }
+  } catch {
+    // Profile resolution error — will be caught later during execution
   }
 
   // 2. Bedrock mode — validate required AWS credentials are present
@@ -292,7 +318,8 @@ async function validateCredentials(
 export async function runPreflightChecks(
   repoPath: string,
   configPath: string | undefined,
-  logger: ActivityLogger
+  logger: ActivityLogger,
+  modelProfileOverride?: string
 ): Promise<Result<void, PentestError>> {
   // 1. Repository check (free — filesystem only)
   const repoResult = await validateRepo(repoPath, logger);
@@ -300,11 +327,18 @@ export async function runPreflightChecks(
     return repoResult;
   }
 
-  // 2. Config check (free — filesystem + CPU)
+  // 2. Config check (free — filesystem + CPU) — also parse for model profile
+  let parsedConfig: Config | null = null;
   if (configPath) {
     const configResult = await validateConfig(configPath, logger);
     if (!configResult.ok) {
       return configResult;
+    }
+    // Re-parse to get the full config (validateConfig only checks validity)
+    try {
+      parsedConfig = await parseConfig(configPath);
+    } catch {
+      // Already validated above, shouldn't fail
     }
   }
 
@@ -318,8 +352,8 @@ export async function runPreflightChecks(
     logger.info(`Browser check: ${chromiumResult.message}`);
   }
 
-  // 4. Credential check (cheap — 1 SDK round-trip)
-  const credResult = await validateCredentials(logger);
+  // 4. Credential check (cheap — 1 SDK round-trip, skipped for custom model profiles)
+  const credResult = await validateCredentials(logger, parsedConfig, modelProfileOverride);
   if (!credResult.ok) {
     return credResult;
   }

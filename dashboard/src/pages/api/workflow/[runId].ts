@@ -11,6 +11,7 @@
  * POST /api/workflow/:runId?action=cancel    — request cancellation
  * POST /api/workflow/:runId?action=terminate — terminate workflow
  * POST /api/workflow/:runId?action=restart   — restart workflow with same input
+ * POST /api/workflow/:runId?action=start-new — start new workflow (body: { modelProfile?: string })
  */
 
 import type { APIRoute } from 'astro';
@@ -232,7 +233,7 @@ export const GET: APIRoute = async ({ params, url, locals }) => {
   }
 };
 
-export const POST: APIRoute = async ({ params, url, locals }) => {
+export const POST: APIRoute = async ({ params, url, locals, request }) => {
   const { runId } = params;
   const action = url.searchParams.get('action');
   const session = (locals as any).session;
@@ -297,6 +298,15 @@ export const POST: APIRoute = async ({ params, url, locals }) => {
     }
 
     if (action === 'restart' || action === 'start-new') {
+      // Parse optional request body for modelProfile override (start-new only)
+      let requestModelProfile: string | undefined;
+      try {
+        const body = await request.json();
+        if (body?.modelProfile && typeof body.modelProfile === 'string') {
+          requestModelProfile = body.modelProfile;
+        }
+      } catch { /* no body or invalid JSON — that's fine */ }
+
       // Extract original input from pre-fetched history
       const startEvent = history?.events?.find(
         (e: Record<string, unknown>) => String(e.eventType).includes('WORKFLOW_EXECUTION_STARTED')
@@ -345,6 +355,12 @@ export const POST: APIRoute = async ({ params, url, locals }) => {
         if (originalInput.pipelineTestingMode) newInput.pipelineTestingMode = true;
         if (originalInput.configPath) newInput.configPath = originalInput.configPath;
         if (originalInput.pipelineConfig) newInput.pipelineConfig = originalInput.pipelineConfig;
+        // Preserve or override modelProfile — use body override, else original
+        if (requestModelProfile) {
+          newInput.modelProfile = requestModelProfile;
+        } else if (originalInput.modelProfile) {
+          newInput.modelProfile = originalInput.modelProfile;
+        }
 
         const newHandle = await client.workflow.start('pentestPipelineWorkflow', {
           taskQueue: attrs?.taskQueue?.name || 'donna-pipeline',
@@ -375,6 +391,8 @@ export const POST: APIRoute = async ({ params, url, locals }) => {
       if (originalInput.pipelineTestingMode) newInput.pipelineTestingMode = true;
       if (originalInput.configPath) newInput.configPath = originalInput.configPath;
       if (originalInput.pipelineConfig) newInput.pipelineConfig = originalInput.pipelineConfig;
+      // Preserve modelProfile on restart (always uses original)
+      if (originalInput.modelProfile) newInput.modelProfile = originalInput.modelProfile;
 
       const newHandle = await client.workflow.start('pentestPipelineWorkflow', {
         taskQueue: attrs?.taskQueue?.name || 'donna-pipeline',
