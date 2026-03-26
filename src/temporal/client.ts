@@ -133,6 +133,7 @@ function showUsage(): void {
   console.log(
     '  --workflow-id <id>    Custom workflow ID (default: donna-<timestamp>)'
   );
+  console.log('  --model-profile <n>   Model profile to use (e.g., claude, qwen-local, hybrid)');
   console.log('  --wait                Wait for workflow completion with progress polling\n');
   console.log('Examples:');
   console.log('  node dist/temporal/client.js https://example.com /path/to/repo');
@@ -153,6 +154,7 @@ interface CliArgs {
   customWorkflowId?: string;
   waitForCompletion: boolean;
   resumeFromWorkspace?: string;
+  modelProfile?: string;
 }
 
 function parseCliArgs(argv: string[]): CliArgs {
@@ -170,6 +172,7 @@ function parseCliArgs(argv: string[]): CliArgs {
   let customWorkflowId: string | undefined;
   let waitForCompletion = false;
   let resumeFromWorkspace: string | undefined;
+  let modelProfile: string | undefined;
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -205,6 +208,12 @@ function parseCliArgs(argv: string[]): CliArgs {
         resumeFromWorkspace = nextArg;
         i++;
       }
+    } else if (arg === '--model-profile') {
+      const nextArg = argv[i + 1];
+      if (nextArg && !nextArg.startsWith('-')) {
+        modelProfile = nextArg;
+        i++;
+      }
     } else if (arg === '--wait') {
       waitForCompletion = true;
     } else if (arg && !arg.startsWith('-')) {
@@ -229,6 +238,7 @@ function parseCliArgs(argv: string[]): CliArgs {
     ...(displayOutputPath && { displayOutputPath }),
     ...(customWorkflowId && { customWorkflowId }),
     ...(resumeFromWorkspace && { resumeFromWorkspace }),
+    ...(modelProfile && { modelProfile }),
   };
 }
 
@@ -344,6 +354,7 @@ function buildPipelineInput(
     ...(workspace.isResume && args.resumeFromWorkspace && { resumeFromWorkspace: args.resumeFromWorkspace }),
     ...(workspace.terminatedWorkflows.length > 0 && { terminatedWorkflows: workspace.terminatedWorkflows }),
     ...(Object.keys(pipelineConfig).length > 0 && { pipelineConfig }),
+    ...(args.modelProfile && { modelProfile: args.modelProfile }),
   };
 }
 
@@ -363,6 +374,9 @@ function displayWorkflowInfo(args: CliArgs, workspace: WorkspaceResolution): voi
   }
   if (args.displayOutputPath) {
     console.log(`  Output:     ${args.displayOutputPath}`);
+  }
+  if (args.modelProfile) {
+    console.log(`  Model:      ${args.modelProfile}`);
   }
   if (args.pipelineTestingMode) {
     console.log(`  Mode:       Pipeline Testing`);

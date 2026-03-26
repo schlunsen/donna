@@ -122,6 +122,12 @@
             }
           },
           "additionalProperties": false
+        },
+        "model_profile": {
+          "type": "string",
+          "description": "Model profile to use for this scan (overrides models.default_profile)",
+          "minLength": 1,
+          "maxLength": 64
         }
       },
       "additionalProperties": false
@@ -149,6 +155,31 @@
       },
       "additionalProperties": false
     },
+    "models": {
+      "type": "object",
+      "description": "Model profiles for multi-provider LLM support. Define named profiles with different endpoints and model mappings.",
+      "properties": {
+        "profiles": {
+          "type": "object",
+          "description": "Named model profiles. Each profile maps tiers to model IDs and optionally specifies endpoint.",
+          "patternProperties": {
+            "^[a-zA-Z0-9][a-zA-Z0-9_-]*$": {
+              "$ref": "#/$defs/model_profile"
+            }
+          },
+          "additionalProperties": false,
+          "minProperties": 1
+        },
+        "default_profile": {
+          "type": "string",
+          "description": "Default profile name to use when no --model-profile CLI flag is provided",
+          "minLength": 1,
+          "maxLength": 64
+        }
+      },
+      "required": ["profiles"],
+      "additionalProperties": false
+    },
     "login": {
       "type": "object",
       "description": "Deprecated: Use 'authentication' section instead",
@@ -158,10 +189,80 @@
   "anyOf": [
     {"required": ["authentication"]},
     {"required": ["rules"]},
-    {"required": ["authentication", "rules"]}
+    {"required": ["authentication", "rules"]},
+    {"required": ["models"]}
   ],
   "additionalProperties": false,
   "$defs": {
+    "model_profile": {
+      "type": "object",
+      "description": "A named model profile defining endpoint and model mappings per tier",
+      "properties": {
+        "base_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "API base URL. Omit to use default Anthropic API."
+        },
+        "api_key_env": {
+          "type": "string",
+          "pattern": "^[A-Z_][A-Z0-9_]*$",
+          "description": "Environment variable name holding the API key (default: ANTHROPIC_API_KEY)"
+        },
+        "tiers": {
+          "type": "object",
+          "description": "Model ID for each capability tier",
+          "properties": {
+            "small": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Model for small tier (summarization, extraction)"
+            },
+            "medium": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Model for medium tier (tool use, general analysis)"
+            },
+            "large": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Model for large tier (deep reasoning, complex analysis)"
+            }
+          },
+          "required": ["small", "medium", "large"],
+          "additionalProperties": false
+        },
+        "tier_endpoints": {
+          "type": "object",
+          "description": "Per-tier endpoint overrides for hybrid profiles (different providers per tier)",
+          "properties": {
+            "small": { "$ref": "#/$defs/tier_endpoint" },
+            "medium": { "$ref": "#/$defs/tier_endpoint" },
+            "large": { "$ref": "#/$defs/tier_endpoint" }
+          },
+          "additionalProperties": false
+        }
+      },
+      "required": ["tiers"],
+      "additionalProperties": false
+    },
+    "tier_endpoint": {
+      "type": "object",
+      "description": "Endpoint override for a specific tier in a hybrid profile",
+      "properties": {
+        "base_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "API base URL for this tier"
+        },
+        "api_key_env": {
+          "type": "string",
+          "pattern": "^[A-Z_][A-Z0-9_]*$",
+          "description": "Environment variable name holding the API key for this tier"
+        }
+      },
+      "required": ["base_url"],
+      "additionalProperties": false
+    },
     "rule": {
       "type": "object",
       "description": "A single testing rule",

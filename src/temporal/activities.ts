@@ -96,6 +96,8 @@ export interface ActivityInput {
   pipelineTestingMode?: boolean;
   workflowId: string;
   sessionId: string;
+  /** Model profile name override from --model-profile CLI flag. */
+  modelProfile?: string;
 }
 
 /**
@@ -166,7 +168,7 @@ async function runAgentActivity(
 
     // 1. Build session metadata and get/create container
     const sessionMetadata = buildSessionMetadata(input);
-    const container = getOrCreateContainer(workflowId, sessionMetadata);
+    const container = getOrCreateContainer(workflowId, sessionMetadata, input.modelProfile);
 
     // 2. Create audit session for THIS agent execution
     // NOTE: Each agent needs its own AuditSession because AuditSession uses
