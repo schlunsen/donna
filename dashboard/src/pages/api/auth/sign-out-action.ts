@@ -16,11 +16,15 @@ export const POST: APIRoute = async ({ request, redirect }) => {
   // Validate Origin header to prevent CSRF
   const origin = request.headers.get('origin');
   const host = request.headers.get('host');
-  if (origin && host && !origin.includes(host)) {
-    return new Response(JSON.stringify({ error: 'Invalid origin' }), {
-      status: 403,
-      headers: { 'Content-Type': 'application/json' },
-    });
+  if (origin && host) {
+    let originHost: string;
+    try { originHost = new URL(origin).host; } catch { originHost = ''; }
+    if (originHost !== host) {
+      return new Response(JSON.stringify({ error: 'Invalid origin' }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
   }
 
   try {
