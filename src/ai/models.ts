@@ -38,6 +38,23 @@ export const BUILTIN_CLAUDE_PROFILE: ModelProfile = {
   },
 };
 
+/** Built-in Qwen profile — routes all tiers through LiteLLM proxy to local vLLM. */
+export const BUILTIN_QWEN_LOCAL_PROFILE: ModelProfile = {
+  base_url: process.env.LITELLM_BASE_URL || 'http://localhost:4000',
+  api_key_env: 'LITELLM_API_KEY',
+  tiers: {
+    small: 'qwen3.5',
+    medium: 'qwen3.5',
+    large: 'qwen3.5',
+  },
+};
+
+/** Map of built-in profile names to their definitions. */
+export const BUILTIN_PROFILES: Readonly<Record<string, ModelProfile>> = {
+  claude: BUILTIN_CLAUDE_PROFILE,
+  'qwen-local': BUILTIN_QWEN_LOCAL_PROFILE,
+};
+
 /** Resolve a model tier to a concrete model ID (legacy path, env-var based). */
 export function resolveModel(tier: ModelTier = 'medium'): string {
   switch (tier) {
