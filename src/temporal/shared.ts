@@ -12,7 +12,7 @@ import type { PipelineConfig } from '../types/config.js';
 
 export interface PipelineInput {
   webUrl: string;
-  repoPath: string;
+  repoPath?: string;
   configPath?: string;
   outputPath?: string;
   pipelineTestingMode?: boolean;

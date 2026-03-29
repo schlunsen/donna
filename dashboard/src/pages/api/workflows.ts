@@ -73,9 +73,9 @@ export const POST: APIRoute = async ({ request, locals }) => {
       modelProfile?: string;
     };
 
-    if (!webUrl || !repoPath) {
+    if (!webUrl) {
       return new Response(
-        JSON.stringify({ error: 'webUrl and repoPath are required' }),
+        JSON.stringify({ error: 'webUrl is required' }),
         { status: 400, headers: { 'Content-Type': 'application/json' } }
       );
     }
@@ -92,7 +92,7 @@ export const POST: APIRoute = async ({ request, locals }) => {
     // Pass user email to associate workflow with creator
     const result = await startWorkflow({
       webUrl,
-      repoPath,
+      ...(repoPath && { repoPath }),
       pipelineTestingMode,
       createdByEmail: session.user.email,
       modelProfile,

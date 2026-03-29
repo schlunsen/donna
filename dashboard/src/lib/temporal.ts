@@ -164,7 +164,7 @@ export async function getWorkflowProgress(
  */
 export async function startWorkflow(options: {
   webUrl: string;
-  repoPath: string;
+  repoPath?: string;
   pipelineTestingMode?: boolean;
   createdByEmail?: string;
   modelProfile?: string;
@@ -177,7 +177,7 @@ export async function startWorkflow(options: {
 
   const input = {
     webUrl: options.webUrl,
-    repoPath: options.repoPath,
+    ...(options.repoPath && { repoPath: options.repoPath }),
     workflowId,
     sessionId: workflowId,
     ...(options.pipelineTestingMode && { pipelineTestingMode: true }),

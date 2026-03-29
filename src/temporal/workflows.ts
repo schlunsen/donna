@@ -176,7 +176,7 @@ export async function pentestPipelineWorkflow(
 
   const activityInput: ActivityInput = {
     webUrl: input.webUrl,
-    repoPath: input.repoPath,
+    repoPath: input.repoPath || '',
     workflowId,
     sessionId,
     ...(input.configPath !== undefined && { configPath: input.configPath }),
@@ -194,19 +194,21 @@ export async function pentestPipelineWorkflow(
     resumeState = await a.loadResumeState(
       input.resumeFromWorkspace,
       input.webUrl,
-      input.repoPath
+      input.repoPath || ''
     );
 
-    // 2. Restore git workspace and clean up incomplete deliverables
+    // 2. Restore git workspace and clean up incomplete deliverables (skip for black-box scans)
     const incompleteAgents = ALL_AGENTS.filter(
       (agentName) => !resumeState!.completedAgents.includes(agentName)
     ) as AgentName[];
 
-    await a.restoreGitCheckpoint(
-      input.repoPath,
-      resumeState.checkpointHash,
-      incompleteAgents
-    );
+    if (input.repoPath) {
+      await a.restoreGitCheckpoint(
+        input.repoPath,
+        resumeState.checkpointHash,
+        incompleteAgents
+      );
+    }
 
     // 3. Short-circuit if all agents already completed
     if (resumeState.completedAgents.length === ALL_AGENTS.length) {

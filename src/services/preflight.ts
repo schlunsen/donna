@@ -321,10 +321,14 @@ export async function runPreflightChecks(
   logger: ActivityLogger,
   modelProfileOverride?: string
 ): Promise<Result<void, PentestError>> {
-  // 1. Repository check (free — filesystem only)
-  const repoResult = await validateRepo(repoPath, logger);
-  if (!repoResult.ok) {
-    return repoResult;
+  // 1. Repository check (free — filesystem only) — skip for black-box scans
+  if (repoPath) {
+    const repoResult = await validateRepo(repoPath, logger);
+    if (!repoResult.ok) {
+      return repoResult;
+    }
+  } else {
+    logger.info('No repository path provided — running in black-box mode (no source code)');
   }
 
   // 2. Config check (free — filesystem + CPU) — also parse for model profile

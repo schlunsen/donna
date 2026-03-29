@@ -240,8 +240,16 @@ export async function runClaudePrompt(
 
   logger.info(`Running Claude Code: ${description}...`);
 
+  // 2b. Resolve working directory — use temp dir for black-box scans (no source code)
+  let effectiveCwd = sourceDir;
+  if (!sourceDir) {
+    const os = await import('os');
+    effectiveCwd = await fs.mkdtemp(path.join(os.default.tmpdir(), 'donna-blackbox-'));
+    logger.info(`Black-box mode: using temp workspace ${effectiveCwd}`);
+  }
+
   // 3. Configure MCP servers
-  const mcpServers = buildMcpServers(sourceDir, agentName, logger);
+  const mcpServers = buildMcpServers(effectiveCwd, agentName, logger);
 
   // 4. Resolve model and endpoint from profile (or legacy env vars)
   const endpoint: ResolvedModelEndpoint = resolveModelFromProfile(modelTier, modelProfile);
@@ -310,7 +318,7 @@ export async function runClaudePrompt(
   const options = {
     model: endpoint.model,
     maxTurns: 10_000,
-    cwd: sourceDir,
+    cwd: effectiveCwd,
     permissionMode: 'bypassPermissions' as const,
     allowDangerouslySkipPermissions: true,
     mcpServers,
@@ -318,7 +326,7 @@ export async function runClaudePrompt(
   };
 
   if (!execContext.useCleanOutput) {
-    logger.info(`SDK Options: maxTurns=${options.maxTurns}, cwd=${sourceDir}, permissions=BYPASS`);
+    logger.info(`SDK Options: maxTurns=${options.maxTurns}, cwd=${effectiveCwd}, permissions=BYPASS`);
   }
 
   let turnCount = 0;

@@ -146,9 +146,9 @@ async function interpolateVariables(
       );
     }
 
-    if (!variables || !variables.webUrl || !variables.repoPath) {
+    if (!variables || !variables.webUrl) {
       throw new PentestError(
-        'Variables must include webUrl and repoPath',
+        'Variables must include webUrl',
         'validation',
         false,
         { variables: Object.keys(variables || {}) }
@@ -157,7 +157,7 @@ async function interpolateVariables(
 
     let result = template
       .replace(/{{WEB_URL}}/g, variables.webUrl)
-      .replace(/{{REPO_PATH}}/g, variables.repoPath)
+      .replace(/{{REPO_PATH}}/g, variables.repoPath || '(no source code — black-box scan)')
       .replace(/{{MCP_SERVER}}/g, variables.MCP_SERVER || 'playwright-agent1');
 
     if (config) {

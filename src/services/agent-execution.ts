@@ -53,6 +53,7 @@ import { BudgetMonitor } from './budget-monitor.js';
  */
 export interface AgentExecutionInput {
   webUrl: string;
+  /** Path to source code repository. Empty string for black-box scans (no source code). */
   repoPath: string;
   configPath?: string | undefined;
   pipelineTestingMode?: boolean | undefined;
@@ -101,6 +102,7 @@ export class AgentExecutionService {
     turnBuffer?: TurnBuffer
   ): Promise<Result<AgentEndResult, PentestError>> {
     const { webUrl, repoPath, configPath, pipelineTestingMode = false, attemptNumber } = input;
+    const hasRepo = !!repoPath;
 
     // 1. Load config (if provided)
     const configResult = await this.configLoader.loadOptional(configPath);
@@ -133,20 +135,22 @@ export class AgentExecutionService {
       );
     }
 
-    // 3. Create git checkpoint before execution
-    try {
-      await createGitCheckpoint(repoPath, agentName, attemptNumber, logger);
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      return err(
-        new PentestError(
-          `Failed to create git checkpoint for ${agentName}: ${errorMessage}`,
-          'filesystem',
-          false,
-          { agentName, repoPath, originalError: errorMessage },
-          ErrorCode.GIT_CHECKPOINT_FAILED
-        )
-      );
+    // 3. Create git checkpoint before execution (skip for black-box scans)
+    if (hasRepo) {
+      try {
+        await createGitCheckpoint(repoPath, agentName, attemptNumber, logger);
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        return err(
+          new PentestError(
+            `Failed to create git checkpoint for ${agentName}: ${errorMessage}`,
+            'filesystem',
+            false,
+            { agentName, repoPath, originalError: errorMessage },
+            ErrorCode.GIT_CHECKPOINT_FAILED
+          )
+        );
+      }
     }
 
     // 4. Resolve model tier: config override > agent definition > default 'medium'
@@ -171,7 +175,7 @@ export class AgentExecutionService {
     // 6. Start audit logging
     await auditSession.startAgent(agentName, prompt, attemptNumber);
 
-    // 7. Execute agent
+    // 7. Execute agent (use repoPath as cwd, or temp dir for black-box scans)
     const result: ClaudePromptResult = await runClaudePrompt(
       prompt,
       repoPath,
@@ -195,7 +199,7 @@ export class AgentExecutionService {
     if (result.success && (result.turns ?? 0) <= 2 && (result.cost || 0) === 0) {
       const resultText = result.result || '';
       if (isSpendingCapBehavior(result.turns ?? 0, result.cost || 0, resultText)) {
-        return this.failAgent(agentName, repoPath, auditSession, logger, {
+        return this.failAgent(agentName, repoPath, hasRepo, auditSession, logger, {
           attemptNumber, result,
           rollbackReason: 'spending cap detected',
           errorMessage: `Spending cap likely reached: ${resultText.slice(0, 100)}`,
@@ -209,7 +213,7 @@ export class AgentExecutionService {
 
     // 7. Handle execution failure
     if (!result.success) {
-      return this.failAgent(agentName, repoPath, auditSession, logger, {
+      return this.failAgent(agentName, repoPath, hasRepo, auditSession, logger, {
         attemptNumber, result,
         rollbackReason: 'execution failure',
         errorMessage: result.error || 'Agent execution failed',
@@ -220,23 +224,28 @@ export class AgentExecutionService {
       });
     }
 
-    // 8. Validate output
-    const validationPassed = await validateAgentOutput(result, agentName, repoPath, logger);
-    if (!validationPassed) {
-      return this.failAgent(agentName, repoPath, auditSession, logger, {
-        attemptNumber, result,
-        rollbackReason: 'validation failure',
-        errorMessage: `Agent ${agentName} failed output validation`,
-        errorCode: ErrorCode.OUTPUT_VALIDATION_FAILED,
-        category: 'validation',
-        retryable: true,
-        context: { agentName, deliverableFilename: AGENTS[agentName].deliverableFilename },
-      });
+    // 8. Validate output (skip file-based validation for black-box scans)
+    if (hasRepo) {
+      const validationPassed = await validateAgentOutput(result, agentName, repoPath, logger);
+      if (!validationPassed) {
+        return this.failAgent(agentName, repoPath, hasRepo, auditSession, logger, {
+          attemptNumber, result,
+          rollbackReason: 'validation failure',
+          errorMessage: `Agent ${agentName} failed output validation`,
+          errorCode: ErrorCode.OUTPUT_VALIDATION_FAILED,
+          category: 'validation',
+          retryable: true,
+          context: { agentName, deliverableFilename: AGENTS[agentName].deliverableFilename },
+        });
+      }
     }
 
-    // 9. Success - commit deliverables, then capture checkpoint hash
-    await commitGitSuccess(repoPath, agentName, logger);
-    const commitHash = await getGitCommitHash(repoPath);
+    // 9. Success - commit deliverables, then capture checkpoint hash (skip for black-box)
+    let commitHash: string | null = null;
+    if (hasRepo) {
+      await commitGitSuccess(repoPath, agentName, logger);
+      commitHash = await getGitCommitHash(repoPath);
+    }
 
     const endResult: AgentEndResult = {
       attemptNumber,
@@ -255,11 +264,14 @@ export class AgentExecutionService {
   private async failAgent(
     agentName: AgentName,
     repoPath: string,
+    hasRepo: boolean,
     auditSession: AuditSession,
     logger: ActivityLogger,
     opts: FailAgentOpts
   ): Promise<Result<AgentEndResult, PentestError>> {
-    await rollbackGitWorkspace(repoPath, opts.rollbackReason, logger);
+    if (hasRepo) {
+      await rollbackGitWorkspace(repoPath, opts.rollbackReason, logger);
+    }
 
     const endResult: AgentEndResult = {
       attemptNumber: opts.attemptNumber,

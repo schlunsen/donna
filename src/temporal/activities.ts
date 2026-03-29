@@ -90,6 +90,7 @@ export class TurnBuffer {
  */
 export interface ActivityInput {
   webUrl: string;
+  /** Path to source code repository. Empty string for black-box scans (no source code). */
   repoPath: string;
   configPath?: string;
   outputPath?: string;
