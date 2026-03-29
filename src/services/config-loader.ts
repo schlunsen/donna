@@ -11,7 +11,7 @@
  * Pure service with no Temporal dependencies.
  */
 
-import { parseConfig, distributeConfig } from '../config-parser.js';
+import { parseConfig, distributeConfig, resolveActiveProfile } from '../config-parser.js';
 import { PentestError } from './error-handling.js';
 import { Result, ok, err } from '../types/result.js';
 import { ErrorCode } from '../types/errors.js';
@@ -75,6 +75,18 @@ export class ConfigLoaderService {
     configPath: string | undefined
   ): Promise<Result<DistributedConfig | null, PentestError>> {
     if (!configPath) {
+      // No config file, but if there's a model profile override, resolve built-in profiles
+      if (this.profileOverride) {
+        const modelProfile = resolveActiveProfile(null, this.profileOverride);
+        if (modelProfile) {
+          return ok({
+            avoid: [],
+            focus: [],
+            authentication: null,
+            modelProfile,
+          });
+        }
+      }
       return ok(null);
     }
     return this.load(configPath);
