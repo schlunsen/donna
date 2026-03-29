@@ -321,7 +321,7 @@ if (periodFilter === 'hour') activeFilterLabel = 'Last Hour';
                                         <span class="cell-runid" title={wf.runId}>{wf.runId.slice(0, 8)}…</span>
                                     </td>
                                     <td class="cell-type">
-                                        <span class={`model-badge ${wf.modelProfile === 'claude' ? 'model-claude' : wf.modelProfile === 'hybrid' ? 'model-hybrid' : 'model-custom'}`}>
+                                        <span class={`model-badge ${wf.modelProfile === 'claude' ? 'model-claude' : wf.modelProfile === 'qwen-local' ? 'model-qwen' : wf.modelProfile === 'hybrid' ? 'model-hybrid' : 'model-custom'}`}>
                                             {wf.modelProfile}
                                         </span>
                                     </td>
@@ -428,11 +428,11 @@ if (periodFilter === 'hour') activeFilterLabel = 'Last Hour';
                                 <span class="model-option-desc">Default Anthropic Claude models</span>
                             </span>
                         </label>
-                        <label class="model-option" data-profile="hybrid">
-                            <input type="radio" name="startScanModel" value="hybrid" />
+                        <label class="model-option" data-profile="qwen-local">
+                            <input type="radio" name="startScanModel" value="qwen-local" />
                             <span class="model-option-inner">
-                                <span class="model-option-name"><span class="model-badge model-hybrid">hybrid</span></span>
-                                <span class="model-option-desc">Mix of providers per tier (e.g. local small, Claude large)</span>
+                                <span class="model-option-name"><span class="model-badge model-qwen">qwen</span></span>
+                                <span class="model-option-desc">Local Qwen models via LiteLLM proxy</span>
                             </span>
                         </label>
                     </div>
