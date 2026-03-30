@@ -121,6 +121,19 @@ function truncateStackTrace(failure: ApplicationFailure): void {
 }
 
 /**
+ * Resolve the effective workspace path for a workflow.
+ * If repoPath is set, use it directly. Otherwise, create a stable shared
+ * workspace directory per workflow (for black-box scans without source code).
+ */
+async function resolveWorkspacePath(input: ActivityInput): Promise<string> {
+  if (input.repoPath) return input.repoPath;
+  const os = await import('os');
+  const workspaceDir = path.join(os.default.tmpdir(), `donna-workspace-${input.workflowId}`);
+  await fs.mkdir(workspaceDir, { recursive: true });
+  return workspaceDir;
+}
+
+/**
  * Build SessionMetadata from ActivityInput.
  */
 function buildSessionMetadata(input: ActivityInput): SessionMetadata {
@@ -146,9 +159,12 @@ async function runAgentActivity(
   agentName: AgentName,
   input: ActivityInput
 ): Promise<AgentMetrics> {
-  const { repoPath, configPath, pipelineTestingMode = false, workflowId, webUrl } = input;
+  const { configPath, pipelineTestingMode = false, workflowId, webUrl } = input;
   const startTime = Date.now();
   const attemptNumber = Context.current().info.attempt;
+
+  // Resolve workspace: use repoPath if provided, otherwise stable shared workspace per workflow
+  const repoPath = await resolveWorkspacePath(input);
 
   // Turn buffer - executor pushes turn messages, heartbeat reads them
   const turnBuffer = new TurnBuffer();
@@ -368,7 +384,7 @@ export async function runPreflightValidation(input: ActivityInput): Promise<void
  * Returns the finding summary with severity counts for workflow state.
  */
 export async function assembleReportActivity(input: ActivityInput): Promise<import('./shared.js').FindingSummary | null> {
-  const { repoPath } = input;
+  const repoPath = await resolveWorkspacePath(input);
   const logger = createActivityLogger();
   logger.info('Assembling deliverables from specialist agents...');
   try {
@@ -385,7 +401,8 @@ export async function assembleReportActivity(input: ActivityInput): Promise<impo
  * Inject model metadata into the final report.
  */
 export async function injectReportMetadataActivity(input: ActivityInput): Promise<void> {
-  const { repoPath, sessionId, outputPath } = input;
+  const repoPath = await resolveWorkspacePath(input);
+  const { sessionId, outputPath } = input;
   const logger = createActivityLogger();
   const effectiveOutputPath = outputPath
     ? path.join(outputPath, sessionId)
@@ -409,7 +426,7 @@ export async function collectExploitationFeedback(
   vulnType: VulnType,
   iterationCount: number
 ): Promise<{ retryableCount: number; totalAttempts: number }> {
-  const { repoPath } = input;
+  const repoPath = await resolveWorkspacePath(input);
   const logger = createActivityLogger();
 
   try {
@@ -454,7 +471,7 @@ export async function collectExploitationFeedback(
  * to the comprehensive report so reviewers can see exploitation coverage.
  */
 export async function appendFeedbackToReport(input: ActivityInput): Promise<void> {
-  const { repoPath } = input;
+  const repoPath = await resolveWorkspacePath(input);
   const logger = createActivityLogger();
 
   try {
@@ -491,7 +508,8 @@ export async function checkExploitationQueue(
   input: ActivityInput,
   vulnType: VulnType
 ): Promise<ExploitationDecision> {
-  const { repoPath, workflowId } = input;
+  const repoPath = await resolveWorkspacePath(input);
+  const { workflowId } = input;
   const logger = createActivityLogger();
 
   // Reuse container's service if available (from prior vuln agent runs)
@@ -739,7 +757,8 @@ export async function logWorkflowComplete(
   input: ActivityInput,
   summary: WorkflowSummary
 ): Promise<void> {
-  const { repoPath, workflowId } = input;
+  const repoPath = await resolveWorkspacePath(input);
+  const { workflowId } = input;
   const sessionMetadata = buildSessionMetadata(input);
 
   // 1. Initialize audit session and mark final status

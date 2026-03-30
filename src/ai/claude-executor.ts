@@ -243,9 +243,12 @@ export async function runClaudePrompt(
   // 2b. Resolve working directory — use temp dir for black-box scans (no source code)
   let effectiveCwd = sourceDir;
   if (!sourceDir) {
+    // Use a stable workspace dir (created by activity layer) or create a fallback temp dir
     const os = await import('os');
-    effectiveCwd = await fs.mkdtemp(path.join(os.default.tmpdir(), 'donna-blackbox-'));
-    logger.info(`Black-box mode: using temp workspace ${effectiveCwd}`);
+    const fallbackDir = path.join(os.default.tmpdir(), 'donna-blackbox-fallback');
+    await fs.mkdirp(fallbackDir);
+    effectiveCwd = fallbackDir;
+    logger.info(`Black-box mode: using workspace ${effectiveCwd}`);
   }
 
   // 3. Configure MCP servers
