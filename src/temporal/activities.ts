@@ -176,7 +176,10 @@ async function runAgentActivity(
       agent: agentName,
       elapsedSeconds: elapsed,
       attempt: attemptNumber,
+      turnCount: turnBuffer.getAll().length,
       recentTurns: turnBuffer.getAll(),
+      model: input.modelProfile || 'claude',
+      workspace: repoPath,
     });
   }, HEARTBEAT_INTERVAL_MS);
 

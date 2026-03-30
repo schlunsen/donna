@@ -1091,6 +1091,39 @@ const totalDurationSec = Math.round((progress?.summary?.totalDurationMs ?? sessi
                                         </label>
                                     </div>
                                 </div>
+                                <!-- Pipeline progress stages -->
+                                <div class="live-pipeline-progress" id="livePipelineProgress">
+                                    <div class="pipeline-stage completed" data-stage="preflight"><span class="stage-dot"></span><span class="stage-label">Preflight</span></div>
+                                    <div class="pipeline-connector"></div>
+                                    <div class="pipeline-stage" data-stage="pre-recon"><span class="stage-dot"></span><span class="stage-label">Pre-Recon</span></div>
+                                    <div class="pipeline-connector"></div>
+                                    <div class="pipeline-stage" data-stage="recon"><span class="stage-dot"></span><span class="stage-label">Recon</span></div>
+                                    <div class="pipeline-connector"></div>
+                                    <div class="pipeline-stage" data-stage="vuln-analysis"><span class="stage-dot"></span><span class="stage-label">Vuln Analysis</span></div>
+                                    <div class="pipeline-connector"></div>
+                                    <div class="pipeline-stage" data-stage="exploitation"><span class="stage-dot"></span><span class="stage-label">Exploitation</span></div>
+                                    <div class="pipeline-connector"></div>
+                                    <div class="pipeline-stage" data-stage="report"><span class="stage-dot"></span><span class="stage-label">Report</span></div>
+                                </div>
+                                <!-- Live metrics bar -->
+                                <div class="live-metrics-bar">
+                                    <div class="live-metric">
+                                        <span class="live-metric-label">Turns</span>
+                                        <span class="live-metric-value" id="liveTurnCount">0</span>
+                                    </div>
+                                    <div class="live-metric">
+                                        <span class="live-metric-label">Model</span>
+                                        <span class="live-metric-value" id="liveModel">—</span>
+                                    </div>
+                                    <div class="live-metric">
+                                        <span class="live-metric-label">Agents Done</span>
+                                        <span class="live-metric-value" id="liveAgentsDone">0/?</span>
+                                    </div>
+                                    <div class="live-metric">
+                                        <span class="live-metric-label">Attempt</span>
+                                        <span class="live-metric-value" id="liveAttempt">1</span>
+                                    </div>
+                                </div>
                                 <div class="live-logs-viewer" id="liveLogsViewer">
                                     <div class="live-logs-empty" id="liveLogsEmpty">
                                         Waiting for agent turn data...
@@ -1647,6 +1680,54 @@ const totalDurationSec = Math.round((progress?.summary?.totalDurationMs ?? sessi
             let pollTimer = null;
             let seenLines = new Set();
             let isPolling = false;
+            let lastAgent = null;
+            const turnCountEl = document.getElementById('liveTurnCount');
+            const modelEl = document.getElementById('liveModel');
+            const agentsDoneEl = document.getElementById('liveAgentsDone');
+            const attemptEl = document.getElementById('liveAttempt');
+
+            // Agent-to-pipeline-stage mapping
+            const AGENT_STAGE_MAP = {
+                'pre-recon': 'pre-recon',
+                'recon': 'recon',
+                'auth-vuln': 'vuln-analysis', 'authz-vuln': 'vuln-analysis',
+                'xss-vuln': 'vuln-analysis', 'injection-vuln': 'vuln-analysis',
+                'ssrf-vuln': 'vuln-analysis',
+                'auth-exploit': 'exploitation', 'authz-exploit': 'exploitation',
+                'xss-exploit': 'exploitation', 'injection-exploit': 'exploitation',
+                'ssrf-exploit': 'exploitation',
+                'report': 'report',
+            };
+
+            function updatePipelineProgress(currentAgent, completedAgents) {
+                const stages = document.querySelectorAll('#livePipelineProgress .pipeline-stage');
+                const completedStages = new Set();
+
+                // Mark completed stages based on completed agents
+                if (completedAgents && completedAgents.length > 0) {
+                    for (const a of completedAgents) {
+                        const stage = AGENT_STAGE_MAP[a];
+                        if (stage) completedStages.add(stage);
+                    }
+                }
+
+                // Determine active stage from current agent
+                const activeStage = currentAgent ? AGENT_STAGE_MAP[currentAgent] : null;
+
+                stages.forEach(function(s) {
+                    const stage = s.dataset.stage;
+                    s.classList.remove('completed', 'active');
+                    if (completedStages.has(stage) && stage !== activeStage) {
+                        s.classList.add('completed');
+                    } else if (stage === activeStage) {
+                        s.classList.add('active');
+                    }
+                    // Preflight is always completed if we're seeing any agent
+                    if (stage === 'preflight' && (currentAgent || (completedAgents && completedAgents.length > 0))) {
+                        s.classList.add('completed');
+                    }
+                });
+            }
 
             function formatElapsed(seconds) {
                 const m = Math.floor(seconds / 60);
@@ -1770,11 +1851,23 @@ const totalDurationSec = Math.round((progress?.summary?.totalDurationMs ?? sessi
                     if (data.heartbeats && data.heartbeats.length > 0) {
                         for (const hb of data.heartbeats) {
                             if (hb.agent && agentLabel) {
+                                // Add agent transition marker
+                                if (lastAgent && lastAgent !== hb.agent) {
+                                    const marker = document.createElement('div');
+                                    marker.className = 'live-log-line agent-transition';
+                                    marker.innerHTML = '<span class="transition-arrow">▸</span> <span class="transition-text">Agent switched to <strong>' + hb.agent + '</strong></span>';
+                                    viewer.appendChild(marker);
+                                }
+                                lastAgent = hb.agent;
                                 agentLabel.textContent = hb.agent;
                             }
                             if (hb.elapsedSeconds && elapsedLabel) {
                                 elapsedLabel.textContent = formatElapsed(hb.elapsedSeconds);
                             }
+                            // Update metrics
+                            if (hb.turnCount && turnCountEl) turnCountEl.textContent = hb.turnCount;
+                            if (hb.model && modelEl) modelEl.textContent = hb.model;
+                            if (hb.attempt && attemptEl) attemptEl.textContent = hb.attempt;
                             // Append turn lines
                             if (Array.isArray(hb.recentTurns)) {
                                 for (const turn of hb.recentTurns) {
@@ -1786,18 +1879,24 @@ const totalDurationSec = Math.round((progress?.summary?.totalDurationMs ?? sessi
 
                     // Also extract info from progress query
                     if (data.progress) {
-                        if (data.progress.currentAgent && agentLabel) {
-                            agentLabel.textContent = data.progress.currentAgent;
+                        const currentAgent = data.progress.currentAgent;
+                        const completedAgents = data.progress.completedAgents || [];
+                        if (currentAgent && agentLabel) {
+                            agentLabel.textContent = currentAgent;
                         }
                         if (data.progress.currentPhase && phaseLabel) {
                             phaseLabel.textContent = data.progress.currentPhase;
                         }
                         // Show completed agents count
-                        if (data.progress.completedAgents && phaseLabel) {
-                            const done = data.progress.completedAgents.length || 0;
-                            const total = data.progress.summary?.agentCount || '?';
+                        const done = completedAgents.length || 0;
+                        const total = data.progress.summary?.agentCount || '?';
+                        if (phaseLabel) {
                             phaseLabel.textContent = (data.progress.currentPhase || '') + ' (' + done + '/' + total + ' agents)';
                         }
+                        if (agentsDoneEl) agentsDoneEl.textContent = done + '/' + total;
+
+                        // Update pipeline progress
+                        updatePipelineProgress(currentAgent, completedAgents);
                     }
                 } catch (e) {
                     // Silently ignore poll errors
@@ -2749,6 +2848,108 @@ const totalDurationSec = Math.round((progress?.summary?.totalDurationMs ?? sessi
         display: none;
     }
 
+    /* Pipeline progress bar */
+    .live-pipeline-progress {
+        display: flex;
+        align-items: center;
+        gap: 0;
+        margin-bottom: 0.75rem;
+        padding: 0.6rem 1rem;
+        background: rgba(255, 255, 255, 0.02);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        overflow-x: auto;
+    }
+
+    .pipeline-stage {
+        display: flex;
+        align-items: center;
+        gap: 0.35rem;
+        flex-shrink: 0;
+    }
+
+    .pipeline-stage .stage-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.1);
+        border: 2px solid rgba(255, 255, 255, 0.15);
+        transition: all 0.3s;
+    }
+
+    .pipeline-stage .stage-label {
+        font-size: 0.7rem;
+        color: var(--text-faint);
+        font-weight: 500;
+        transition: color 0.3s;
+    }
+
+    .pipeline-stage.completed .stage-dot {
+        background: #34d399;
+        border-color: #34d399;
+        box-shadow: 0 0 6px rgba(52, 211, 153, 0.4);
+    }
+
+    .pipeline-stage.completed .stage-label {
+        color: #34d399;
+    }
+
+    .pipeline-stage.active .stage-dot {
+        background: #67e8f9;
+        border-color: #67e8f9;
+        animation: dot-pulse 1.5s ease-in-out infinite;
+    }
+
+    .pipeline-stage.active .stage-label {
+        color: #67e8f9;
+        font-weight: 600;
+    }
+
+    .pipeline-connector {
+        flex: 1;
+        height: 2px;
+        min-width: 12px;
+        background: rgba(255, 255, 255, 0.08);
+        margin: 0 0.3rem;
+    }
+
+    .pipeline-stage.completed + .pipeline-connector,
+    .pipeline-connector:has(+ .pipeline-stage.completed),
+    .pipeline-connector:has(+ .pipeline-stage.active) {
+        background: rgba(52, 211, 153, 0.3);
+    }
+
+    /* Live metrics bar */
+    .live-metrics-bar {
+        display: flex;
+        gap: 1.5rem;
+        margin-bottom: 0.75rem;
+        padding: 0.5rem 1rem;
+        background: rgba(255, 255, 255, 0.02);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+    }
+
+    .live-metric {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+    }
+
+    .live-metric-label {
+        font-size: 0.68rem;
+        color: var(--text-faint);
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+    }
+
+    .live-metric-value {
+        font-family: var(--font-mono);
+        font-size: 0.78rem;
+        font-weight: 600;
+        color: #d1d5db;
+    }
+
     .live-logs-viewer {
         background: #0a0e14;
         border: 1px solid var(--border);
@@ -2831,6 +3032,36 @@ const totalDurationSec = Math.round((progress?.summary?.totalDurationMs ?? sessi
 
     .turn-tool-param {
         color: #9ca3af;
+    }
+
+    .agent-transition {
+        padding: 0.4rem 0;
+        margin: 0.3rem 0;
+        border-bottom: 1px solid rgba(103, 232, 249, 0.1);
+        border-top: 1px solid rgba(103, 232, 249, 0.1);
+    }
+
+    .transition-arrow {
+        color: #67e8f9;
+        font-size: 0.85rem;
+    }
+
+    .transition-text {
+        color: var(--text-muted);
+        font-size: 0.75rem;
+    }
+
+    .transition-text strong {
+        color: #67e8f9;
+    }
+
+    .live-log-done {
+        color: #34d399;
+        text-align: center;
+        padding: 1rem 0;
+        font-weight: 600;
+        border-top: 1px solid rgba(52, 211, 153, 0.2);
+        margin-top: 0.5rem;
     }
 
     .turn-text {
