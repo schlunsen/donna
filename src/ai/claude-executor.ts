@@ -25,6 +25,7 @@ import { createProgressManager } from './progress-manager.js';
 import { createAuditLogger } from './audit-logger.js';
 import { getActualModelName } from './router-utils.js';
 import { resolveModelFromProfile, type ModelTier } from './models.js';
+import { ensureStreamingAdapter } from './streaming-adapter.js';
 import type { ModelProfile, ResolvedModelEndpoint } from '../types/config.js';
 import type { ActivityLogger } from '../types/activity-logger.js';
 import type { TurnBuffer } from '../temporal/activities.js';
@@ -305,8 +306,17 @@ export async function runClaudePrompt(
   }
 
   // 5b. Apply model profile endpoint overrides (takes precedence over env passthrough)
+  // For non-Anthropic models (with custom base_url), route through the streaming adapter
+  // to fix LiteLLM's broken streaming tool_use translation.
   if (endpoint.base_url) {
-    sdkEnv.ANTHROPIC_BASE_URL = endpoint.base_url;
+    try {
+      const adapterUrl = await ensureStreamingAdapter(endpoint.base_url);
+      sdkEnv.ANTHROPIC_BASE_URL = adapterUrl;
+      logger.info(`Streaming adapter active: SDK -> ${adapterUrl} -> ${endpoint.base_url}`);
+    } catch (adapterErr) {
+      logger.warn(`Streaming adapter failed to start, using direct URL: ${adapterErr}`);
+      sdkEnv.ANTHROPIC_BASE_URL = endpoint.base_url;
+    }
   }
   if (endpoint.api_key_env) {
     const apiKey = process.env[endpoint.api_key_env];
