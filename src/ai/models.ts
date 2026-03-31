@@ -38,14 +38,14 @@ export const BUILTIN_CLAUDE_PROFILE: ModelProfile = {
   },
 };
 
-/** Built-in Qwen profile — routes all tiers through LiteLLM proxy to local vLLM. */
+/** Built-in Qwen profile — routes all tiers directly to local vLLM (bypasses LiteLLM). */
 export const BUILTIN_QWEN_LOCAL_PROFILE: ModelProfile = {
-  base_url: process.env.LITELLM_BASE_URL || 'http://host.docker.internal:4000',
-  api_key_env: 'LITELLM_API_KEY',
+  base_url: process.env.VLLM_BASE_URL || 'http://host.docker.internal:8000',
+  api_key_env: 'VLLM_API_KEY',
   tiers: {
-    small: 'qwen3.5',
-    medium: 'qwen3.5',
-    large: 'qwen3.5',
+    small: 'Qwen/Qwen3.5-35B-A3B-FP8',
+    medium: 'Qwen/Qwen3.5-35B-A3B-FP8',
+    large: 'Qwen/Qwen3.5-35B-A3B-FP8',
   },
 };
 

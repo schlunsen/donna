@@ -523,7 +523,8 @@ export async function runOpenAIAgentLoop(
           const fnArgs = tc.function.arguments.slice(0, 80);
           parts.push(`🔧 ${tc.function.name}: ${fnArgs}`);
         }
-        turnBuffer.push(`Turn ${turnCount} (${label}): ${parts.join(' | ').slice(0, 250)}`);
+        const ts = new Date().toISOString();
+        turnBuffer.push(`[${ts}] Turn ${turnCount} (${label}): ${parts.join(' | ').slice(0, 250)}`);
       }
 
       logger.info(`Turn ${turnCount}: ${textContent.slice(0, 80)}${toolCalls.length > 0 ? ` [${toolCalls.length} tool calls]` : ''}`);
@@ -618,11 +619,15 @@ async function callChatCompletion(
       messages,
       tools,
       tool_choice: 'auto' as const,
-      max_tokens: 16384,
+      max_tokens: 4096,
       temperature: 0.1,
       // Qwen3.5 specific: disable thinking for deterministic tool calling
       chat_template_kwargs: { enable_thinking: false },
     };
+
+    // 10-minute timeout for large responses (e.g. writing deliverables with big context)
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 600_000);
 
     const response = await fetch(apiUrl, {
       method: 'POST',
@@ -631,7 +636,10 @@ async function callChatCompletion(
         'Authorization': `Bearer ${apiKey}`,
       },
       body: JSON.stringify(body),
+      signal: controller.signal,
     });
+
+    clearTimeout(timeout);
 
     if (!response.ok) {
       const errorText = await response.text();

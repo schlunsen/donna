@@ -60,8 +60,13 @@ export async function ensureStreamingAdapter(litellmBaseUrl: string): Promise<st
 }
 
 async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
-  // Only handle POST /v1/messages
-  if (req.method !== 'POST' || !req.url?.startsWith('/v1/messages')) {
+  console.log(`[streaming-adapter] ${req.method} ${req.url}`);
+
+  // Handle both /v1/messages and /v1/responses endpoints
+  const isMessagesEndpoint = req.url?.startsWith('/v1/messages');
+  const isResponsesEndpoint = req.url?.startsWith('/v1/responses');
+
+  if (req.method !== 'POST' || (!isMessagesEndpoint && !isResponsesEndpoint)) {
     // Pass through other requests
     await proxyPassthrough(req, res);
     return;
@@ -72,6 +77,8 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
     const body = await readBody(req);
     const parsed = JSON.parse(body);
     const isStreaming = parsed.stream === true;
+
+    console.log(`[streaming-adapter] endpoint=${req.url}, stream=${isStreaming}, model=${parsed.model ?? 'unknown'}`);
 
     if (!isStreaming) {
       // Non-streaming requests pass through directly

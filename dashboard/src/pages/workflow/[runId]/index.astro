@@ -1085,6 +1085,11 @@ const totalDurationSec = Math.round((progress?.summary?.totalDurationMs ?? sessi
                                         <span class="live-phase" id="livePhase"></span>
                                         <span class="live-elapsed" id="liveElapsed">—</span>
                                         <label class="auto-scroll-toggle">
+                                            <input type="checkbox" id="showTimestampsToggle" />
+                                            <span class="toggle-slider"></span>
+                                            <span class="toggle-label">Timestamps</span>
+                                        </label>
+                                        <label class="auto-scroll-toggle">
                                             <input type="checkbox" id="autoScrollToggle" checked />
                                             <span class="toggle-slider"></span>
                                             <span class="toggle-label">Auto-scroll</span>
@@ -1672,6 +1677,7 @@ const totalDurationSec = Math.round((progress?.summary?.totalDurationMs ?? sessi
             const agentLabel = document.getElementById('liveAgent');
             const elapsedLabel = document.getElementById('liveElapsed');
             const autoScrollToggle = document.getElementById('autoScrollToggle');
+            const showTimestampsToggle = document.getElementById('showTimestampsToggle');
             const phaseLabel = document.getElementById('livePhase');
 
             if (!viewer) return; // Not a running workflow
@@ -1679,6 +1685,13 @@ const totalDurationSec = Math.round((progress?.summary?.totalDurationMs ?? sessi
             const POLL_INTERVAL = 2000;
             let pollTimer = null;
             let seenLines = new Set();
+
+            // Toggle timestamps visibility
+            if (showTimestampsToggle) {
+                showTimestampsToggle.addEventListener('change', function() {
+                    viewer.classList.toggle('show-timestamps', showTimestampsToggle.checked);
+                });
+            }
             let isPolling = false;
             let lastAgent = null;
             const turnCountEl = document.getElementById('liveTurnCount');
@@ -1747,21 +1760,44 @@ const totalDurationSec = Math.round((progress?.summary?.totalDurationMs ?? sessi
                 const line = document.createElement('div');
                 line.className = 'live-log-line';
 
+                // Extract timestamp if present: [2026-03-31T00:34:45.123Z] Turn 1 (...)
+                let rawText = text;
+                let timestamp = null;
+                const tsMatch = text.match(/^\[(\d{4}-\d{2}-\d{2}T[\d:.]+Z?)\]\s*/);
+                if (tsMatch) {
+                    timestamp = tsMatch[1];
+                    rawText = text.slice(tsMatch[0].length);
+                }
+
+                // Add timestamp element (hidden by default, shown via CSS toggle)
+                if (timestamp) {
+                    const tsSpan = document.createElement('span');
+                    tsSpan.className = 'turn-timestamp';
+                    // Format as HH:MM:SS
+                    try {
+                        const d = new Date(timestamp);
+                        tsSpan.textContent = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                    } catch(e) {
+                        tsSpan.textContent = timestamp;
+                    }
+                    line.appendChild(tsSpan);
+                }
+
                 // Color code based on content
-                if (text.includes('Turn ')) {
+                if (rawText.includes('Turn ')) {
                     line.classList.add('turn-line');
                 }
 
                 // Extract turn number for styling
-                const turnMatch = text.match(/^Turn (\d+)/);
+                const turnMatch = rawText.match(/^Turn (\d+)/);
                 if (turnMatch) {
                     const num = document.createElement('span');
                     num.className = 'turn-number';
                     num.textContent = 'T' + turnMatch[1];
                     line.appendChild(num);
 
-                    const rest = text.slice(text.indexOf('):') + 2).trim() || text.slice(turnMatch[0].length);
-                    const agentMatch = text.match(/\(([^)]+)\)/);
+                    const rest = rawText.slice(rawText.indexOf('):') + 2).trim() || rawText.slice(turnMatch[0].length);
+                    const agentMatch = rawText.match(/\(([^)]+)\)/);
 
                     if (agentMatch) {
                         const agentSpan = document.createElement('span');
@@ -1772,7 +1808,7 @@ const totalDurationSec = Math.round((progress?.summary?.totalDurationMs ?? sessi
 
                     // Parse content that may contain tool calls (🔧) and text separated by |
                     if (rest) {
-                        const contentWrap = document.createElement('span');
+                        const contentWrap = document.createElement('div');
                         contentWrap.className = 'turn-content';
                         const segments = rest.split(' | ');
                         segments.forEach(function(seg, i) {
@@ -1812,7 +1848,7 @@ const totalDurationSec = Math.round((progress?.summary?.totalDurationMs ?? sessi
                         line.appendChild(contentWrap);
                     }
                 } else {
-                    line.textContent = text;
+                    line.textContent = rawText;
                 }
 
                 viewer.appendChild(line);
@@ -2954,12 +2990,12 @@ const totalDurationSec = Math.round((progress?.summary?.totalDurationMs ?? sessi
         background: #0a0e14;
         border: 1px solid var(--border);
         border-radius: var(--radius);
-        padding: 1rem;
-        height: 500px;
+        padding: 0.5rem 0;
+        height: 600px;
         overflow-y: auto;
         font-family: var(--font-mono);
-        font-size: 0.78rem;
-        line-height: 1.7;
+        font-size: 0.8rem;
+        line-height: 1.5;
     }
 
     .live-logs-viewer::-webkit-scrollbar {
@@ -2987,21 +3023,40 @@ const totalDurationSec = Math.round((progress?.summary?.totalDurationMs ?? sessi
     }
 
     .live-log-line {
-        padding: 2px 0;
+        padding: 0.5rem 0.75rem;
         display: flex;
-        align-items: baseline;
-        gap: 0.5rem;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+        align-items: flex-start;
+        gap: 0.75rem;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+        transition: background 0.15s;
+    }
+
+    .live-log-line:hover {
+        background: rgba(255, 255, 255, 0.02);
     }
 
     .live-log-line.turn-line {
         color: #d1d5db;
     }
 
+    /* Timestamp - hidden by default, shown when toggle is on */
+    .turn-timestamp {
+        display: none;
+        color: #6b7280;
+        font-size: 0.72rem;
+        min-width: 70px;
+        flex-shrink: 0;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .live-logs-viewer.show-timestamps .turn-timestamp {
+        display: inline;
+    }
+
     .turn-number {
         color: #34d399;
         font-weight: 700;
-        min-width: 42px;
+        min-width: 36px;
         flex-shrink: 0;
     }
 
@@ -3014,11 +3069,10 @@ const totalDurationSec = Math.round((progress?.summary?.totalDurationMs ?? sessi
 
     .turn-content {
         color: #d1d5db;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
         flex: 1;
         min-width: 0;
+        line-height: 1.6;
+        word-break: break-word;
     }
 
     .turn-tool {
@@ -3032,6 +3086,7 @@ const totalDurationSec = Math.round((progress?.summary?.totalDurationMs ?? sessi
 
     .turn-tool-param {
         color: #9ca3af;
+        word-break: break-all;
     }
 
     .agent-transition {
@@ -3070,6 +3125,7 @@ const totalDurationSec = Math.round((progress?.summary?.totalDurationMs ?? sessi
 
     .turn-sep {
         color: #4b5563;
+        margin: 0 0.15rem;
     }
 
     .live-log-done {

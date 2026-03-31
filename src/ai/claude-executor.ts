@@ -509,7 +509,8 @@ async function processMessageStream(
         }
         const label = agentName || description;
         const truncated = snippet.slice(0, 250).replace(/\n/g, ' ');
-        turnBuffer.push(`Turn ${turnCount} (${label}): ${truncated}`);
+        const ts = new Date().toISOString();
+        turnBuffer.push(`[${ts}] Turn ${turnCount} (${label}): ${truncated}`);
       }
     }
 
