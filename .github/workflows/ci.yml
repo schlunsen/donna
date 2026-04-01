@@ -20,6 +20,9 @@ jobs:
 
       - run: npm ci
 
+      - name: Build mcp-server (dependency)
+        run: cd mcp-server && npm ci && npm run build
+
       - run: npm run build
 
       - run: npm run test
