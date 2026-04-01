@@ -165,9 +165,15 @@ export async function getWorkflowProgress(
 export async function startWorkflow(options: {
   webUrl: string;
   repoPath?: string;
+  gitUrl?: string;
   pipelineTestingMode?: boolean;
   createdByEmail?: string;
   modelProfile?: string;
+  modelProfileConfig?: {
+    base_url: string;
+    api_key?: string;
+    tiers: { small: string; medium: string; large: string };
+  };
 }): Promise<{ workflowId: string; runId: string }> {
   const client = await getTemporalClient();
 
@@ -178,6 +184,7 @@ export async function startWorkflow(options: {
   const input = {
     webUrl: options.webUrl,
     ...(options.repoPath && { repoPath: options.repoPath }),
+    ...(options.gitUrl && { gitUrl: options.gitUrl }),
     workflowId,
     sessionId: workflowId,
     ...(options.pipelineTestingMode && { pipelineTestingMode: true }),
@@ -185,6 +192,7 @@ export async function startWorkflow(options: {
     ...(options.createdByEmail && { createdByEmail: options.createdByEmail }),
     // Model profile for multi-provider LLM support
     ...(options.modelProfile && { modelProfile: options.modelProfile }),
+    ...(options.modelProfileConfig && { modelProfileConfig: options.modelProfileConfig }),
   };
 
   const handle = await client.workflow.start('pentestPipelineWorkflow', {

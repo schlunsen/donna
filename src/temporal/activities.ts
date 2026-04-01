@@ -92,6 +92,8 @@ export interface ActivityInput {
   webUrl: string;
   /** Path to source code repository. Empty string for black-box scans (no source code). */
   repoPath: string;
+  /** Optional Git repository URL to clone. Overrides repoPath if both are set. */
+  gitUrl?: string;
   configPath?: string;
   outputPath?: string;
   pipelineTestingMode?: boolean;
@@ -99,6 +101,12 @@ export interface ActivityInput {
   sessionId: string;
   /** Model profile name override from --model-profile CLI flag. */
   modelProfile?: string;
+  /** Inline model profile config from dashboard LLM settings. */
+  modelProfileConfig?: {
+    base_url: string;
+    api_key?: string;
+    tiers: { small: string; medium: string; large: string };
+  };
 }
 
 /**
@@ -122,11 +130,45 @@ function truncateStackTrace(failure: ApplicationFailure): void {
 
 /**
  * Resolve the effective workspace path for a workflow.
- * If repoPath is set, use it directly. Otherwise, create a stable shared
- * workspace directory per workflow (for black-box scans without source code).
+ *
+ * Priority:
+ * 1. gitUrl — clone the repository into a temp directory (overrides repoPath)
+ * 2. repoPath — use an existing local path on the worker
+ * 3. Neither — create a stable shared workspace for black-box scans
  */
 async function resolveWorkspacePath(input: ActivityInput): Promise<string> {
+  // Git clone takes priority over local repoPath
+  if (input.gitUrl) {
+    const os = await import('os');
+    const { execFile } = await import('child_process');
+    const { promisify } = await import('util');
+    const execFileAsync = promisify(execFile);
+
+    const cloneDir = path.join(os.default.tmpdir(), `donna-clone-${input.workflowId}`);
+
+    // Only clone once — if a previous clone completed (.git exists), reuse it.
+    // If the directory exists but is incomplete (interrupted clone), remove and re-clone.
+    const gitDir = path.join(cloneDir, '.git');
+    let alreadyCloned = false;
+    try {
+      await fs.access(gitDir);
+      alreadyCloned = true;
+    } catch {
+      // .git not found — need to clone (clean up partial directory if it exists)
+      await fs.rm(cloneDir, { recursive: true, force: true });
+    }
+
+    if (!alreadyCloned) {
+      await execFileAsync('git', ['clone', '--depth', '1', input.gitUrl, cloneDir], {
+        timeout: 5 * 60 * 1000, // 5 minute timeout for large repos
+      });
+    }
+
+    return cloneDir;
+  }
+
   if (input.repoPath) return input.repoPath;
+
   const os = await import('os');
   const workspaceDir = path.join(os.default.tmpdir(), `donna-workspace-${input.workflowId}`);
   await fs.mkdir(workspaceDir, { recursive: true });
@@ -188,7 +230,7 @@ async function runAgentActivity(
 
     // 1. Build session metadata and get/create container
     const sessionMetadata = buildSessionMetadata(input);
-    const container = getOrCreateContainer(workflowId, sessionMetadata, input.modelProfile);
+    const container = getOrCreateContainer(workflowId, sessionMetadata, input.modelProfile, input.modelProfileConfig);
 
     // 2. Create audit session for THIS agent execution
     // NOTE: Each agent needs its own AuditSession because AuditSession uses
