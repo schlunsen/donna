@@ -175,8 +175,8 @@ async function validateCredentials(
     const profile = resolveActiveProfile(config ?? null, modelProfileOverride);
     if (profile?.base_url) {
       logger.info(`Model profile with custom endpoint (${profile.base_url}) — skipping Anthropic credential validation`);
-      // Verify the profile's API key env var is set
-      if (profile.api_key_env && !process.env[profile.api_key_env]) {
+      // Verify the profile's API key is available (direct key or env var)
+      if (!profile.api_key && profile.api_key_env && !process.env[profile.api_key_env]) {
         return err(
           new PentestError(
             `Model profile requires env var ${profile.api_key_env} but it is not set`,
@@ -321,10 +321,14 @@ export async function runPreflightChecks(
   logger: ActivityLogger,
   modelProfileOverride?: string
 ): Promise<Result<void, PentestError>> {
-  // 1. Repository check (free — filesystem only)
-  const repoResult = await validateRepo(repoPath, logger);
-  if (!repoResult.ok) {
-    return repoResult;
+  // 1. Repository check (free — filesystem only) — skip for black-box scans
+  if (repoPath) {
+    const repoResult = await validateRepo(repoPath, logger);
+    if (!repoResult.ok) {
+      return repoResult;
+    }
+  } else {
+    logger.info('No repository path provided — running in black-box mode (no source code)');
   }
 
   // 2. Config check (free — filesystem + CPU) — also parse for model profile

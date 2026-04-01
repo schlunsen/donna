@@ -11,11 +11,18 @@
  * Pure service with no Temporal dependencies.
  */
 
-import { parseConfig, distributeConfig } from '../config-parser.js';
+import { parseConfig, distributeConfig, resolveActiveProfile } from '../config-parser.js';
 import { PentestError } from './error-handling.js';
 import { Result, ok, err } from '../types/result.js';
 import { ErrorCode } from '../types/errors.js';
-import type { DistributedConfig } from '../types/config.js';
+import type { DistributedConfig, ModelProfile } from '../types/config.js';
+
+/** Inline model profile config from dashboard LLM settings. */
+export interface InlineModelProfileConfig {
+  base_url: string;
+  api_key?: string;
+  tiers: { small: string; medium: string; large: string };
+}
 
 /**
  * Service for loading and distributing configuration files.
@@ -27,8 +34,12 @@ export class ConfigLoaderService {
   /** Optional model profile override from CLI (--model-profile). */
   private profileOverride: string | undefined;
 
-  constructor(profileOverride?: string) {
+  /** Inline model profile config from dashboard LLM settings. */
+  private inlineProfileConfig: InlineModelProfileConfig | undefined;
+
+  constructor(profileOverride?: string, inlineProfileConfig?: InlineModelProfileConfig) {
     this.profileOverride = profileOverride;
+    this.inlineProfileConfig = inlineProfileConfig;
   }
 
   /**
@@ -75,6 +86,33 @@ export class ConfigLoaderService {
     configPath: string | undefined
   ): Promise<Result<DistributedConfig | null, PentestError>> {
     if (!configPath) {
+      // Inline profile config from dashboard LLM settings takes priority
+      if (this.inlineProfileConfig) {
+        const modelProfile: ModelProfile = {
+          base_url: this.inlineProfileConfig.base_url,
+          ...(this.inlineProfileConfig.api_key ? { api_key: this.inlineProfileConfig.api_key } : {}),
+          tiers: this.inlineProfileConfig.tiers,
+        };
+        return ok({
+          avoid: [],
+          focus: [],
+          authentication: null,
+          modelProfile,
+        });
+      }
+
+      // No config file, but if there's a model profile override, resolve built-in profiles
+      if (this.profileOverride) {
+        const modelProfile = resolveActiveProfile(null, this.profileOverride);
+        if (modelProfile) {
+          return ok({
+            avoid: [],
+            focus: [],
+            authentication: null,
+            modelProfile,
+          });
+        }
+      }
       return ok(null);
     }
     return this.load(configPath);

@@ -90,7 +90,10 @@ export class TurnBuffer {
  */
 export interface ActivityInput {
   webUrl: string;
+  /** Path to source code repository. Empty string for black-box scans (no source code). */
   repoPath: string;
+  /** Optional Git repository URL to clone. Overrides repoPath if both are set. */
+  gitUrl?: string;
   configPath?: string;
   outputPath?: string;
   pipelineTestingMode?: boolean;
@@ -98,6 +101,12 @@ export interface ActivityInput {
   sessionId: string;
   /** Model profile name override from --model-profile CLI flag. */
   modelProfile?: string;
+  /** Inline model profile config from dashboard LLM settings. */
+  modelProfileConfig?: {
+    base_url: string;
+    api_key?: string;
+    tiers: { small: string; medium: string; large: string };
+  };
 }
 
 /**
@@ -117,6 +126,53 @@ function truncateStackTrace(failure: ApplicationFailure): void {
   if (failure.stack && failure.stack.length > MAX_STACK_TRACE_LENGTH) {
     failure.stack = failure.stack.slice(0, MAX_STACK_TRACE_LENGTH) + '\n[stack truncated]';
   }
+}
+
+/**
+ * Resolve the effective workspace path for a workflow.
+ *
+ * Priority:
+ * 1. gitUrl — clone the repository into a temp directory (overrides repoPath)
+ * 2. repoPath — use an existing local path on the worker
+ * 3. Neither — create a stable shared workspace for black-box scans
+ */
+async function resolveWorkspacePath(input: ActivityInput): Promise<string> {
+  // Git clone takes priority over local repoPath
+  if (input.gitUrl) {
+    const os = await import('os');
+    const { execFile } = await import('child_process');
+    const { promisify } = await import('util');
+    const execFileAsync = promisify(execFile);
+
+    const cloneDir = path.join(os.default.tmpdir(), `donna-clone-${input.workflowId}`);
+
+    // Only clone once — if a previous clone completed (.git exists), reuse it.
+    // If the directory exists but is incomplete (interrupted clone), remove and re-clone.
+    const gitDir = path.join(cloneDir, '.git');
+    let alreadyCloned = false;
+    try {
+      await fs.access(gitDir);
+      alreadyCloned = true;
+    } catch {
+      // .git not found — need to clone (clean up partial directory if it exists)
+      await fs.rm(cloneDir, { recursive: true, force: true });
+    }
+
+    if (!alreadyCloned) {
+      await execFileAsync('git', ['clone', '--depth', '1', input.gitUrl, cloneDir], {
+        timeout: 5 * 60 * 1000, // 5 minute timeout for large repos
+      });
+    }
+
+    return cloneDir;
+  }
+
+  if (input.repoPath) return input.repoPath;
+
+  const os = await import('os');
+  const workspaceDir = path.join(os.default.tmpdir(), `donna-workspace-${input.workflowId}`);
+  await fs.mkdir(workspaceDir, { recursive: true });
+  return workspaceDir;
 }
 
 /**
@@ -145,9 +201,12 @@ async function runAgentActivity(
   agentName: AgentName,
   input: ActivityInput
 ): Promise<AgentMetrics> {
-  const { repoPath, configPath, pipelineTestingMode = false, workflowId, webUrl } = input;
+  const { configPath, pipelineTestingMode = false, workflowId, webUrl } = input;
   const startTime = Date.now();
   const attemptNumber = Context.current().info.attempt;
+
+  // Resolve workspace: use repoPath if provided, otherwise stable shared workspace per workflow
+  const repoPath = await resolveWorkspacePath(input);
 
   // Turn buffer - executor pushes turn messages, heartbeat reads them
   const turnBuffer = new TurnBuffer();
@@ -159,7 +218,10 @@ async function runAgentActivity(
       agent: agentName,
       elapsedSeconds: elapsed,
       attempt: attemptNumber,
+      turnCount: turnBuffer.getAll().length,
       recentTurns: turnBuffer.getAll(),
+      model: input.modelProfile || 'claude',
+      workspace: repoPath,
     });
   }, HEARTBEAT_INTERVAL_MS);
 
@@ -168,7 +230,7 @@ async function runAgentActivity(
 
     // 1. Build session metadata and get/create container
     const sessionMetadata = buildSessionMetadata(input);
-    const container = getOrCreateContainer(workflowId, sessionMetadata, input.modelProfile);
+    const container = getOrCreateContainer(workflowId, sessionMetadata, input.modelProfile, input.modelProfileConfig);
 
     // 2. Create audit session for THIS agent execution
     // NOTE: Each agent needs its own AuditSession because AuditSession uses
@@ -367,7 +429,7 @@ export async function runPreflightValidation(input: ActivityInput): Promise<void
  * Returns the finding summary with severity counts for workflow state.
  */
 export async function assembleReportActivity(input: ActivityInput): Promise<import('./shared.js').FindingSummary | null> {
-  const { repoPath } = input;
+  const repoPath = await resolveWorkspacePath(input);
   const logger = createActivityLogger();
   logger.info('Assembling deliverables from specialist agents...');
   try {
@@ -384,7 +446,8 @@ export async function assembleReportActivity(input: ActivityInput): Promise<impo
  * Inject model metadata into the final report.
  */
 export async function injectReportMetadataActivity(input: ActivityInput): Promise<void> {
-  const { repoPath, sessionId, outputPath } = input;
+  const repoPath = await resolveWorkspacePath(input);
+  const { sessionId, outputPath } = input;
   const logger = createActivityLogger();
   const effectiveOutputPath = outputPath
     ? path.join(outputPath, sessionId)
@@ -408,7 +471,7 @@ export async function collectExploitationFeedback(
   vulnType: VulnType,
   iterationCount: number
 ): Promise<{ retryableCount: number; totalAttempts: number }> {
-  const { repoPath } = input;
+  const repoPath = await resolveWorkspacePath(input);
   const logger = createActivityLogger();
 
   try {
@@ -453,7 +516,7 @@ export async function collectExploitationFeedback(
  * to the comprehensive report so reviewers can see exploitation coverage.
  */
 export async function appendFeedbackToReport(input: ActivityInput): Promise<void> {
-  const { repoPath } = input;
+  const repoPath = await resolveWorkspacePath(input);
   const logger = createActivityLogger();
 
   try {
@@ -490,7 +553,8 @@ export async function checkExploitationQueue(
   input: ActivityInput,
   vulnType: VulnType
 ): Promise<ExploitationDecision> {
-  const { repoPath, workflowId } = input;
+  const repoPath = await resolveWorkspacePath(input);
+  const { workflowId } = input;
   const logger = createActivityLogger();
 
   // Reuse container's service if available (from prior vuln agent runs)
@@ -738,7 +802,8 @@ export async function logWorkflowComplete(
   input: ActivityInput,
   summary: WorkflowSummary
 ): Promise<void> {
-  const { repoPath, workflowId } = input;
+  const repoPath = await resolveWorkspacePath(input);
+  const { workflowId } = input;
   const sessionMetadata = buildSessionMetadata(input);
 
   // 1. Initialize audit session and mark final status

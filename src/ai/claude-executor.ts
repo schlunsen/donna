@@ -25,6 +25,7 @@ import { createProgressManager } from './progress-manager.js';
 import { createAuditLogger } from './audit-logger.js';
 import { getActualModelName } from './router-utils.js';
 import { resolveModelFromProfile, type ModelTier } from './models.js';
+import { runOpenAIAgentLoop } from './openai-executor.js';
 import type { ModelProfile, ResolvedModelEndpoint } from '../types/config.js';
 import type { ActivityLogger } from '../types/activity-logger.js';
 import type { TurnBuffer } from '../temporal/activities.js';
@@ -226,6 +227,17 @@ export async function runClaudePrompt(
   turnBuffer?: TurnBuffer,
   modelProfile?: ModelProfile
 ): Promise<ClaudePromptResult> {
+  // Route to OpenAI executor for non-Anthropic models (Qwen, Llama, etc.)
+  // Goes direct to vLLM (bypassing LiteLLM) for better speed.
+  // Uses native OpenAI chat completions format instead of Claude Agent SDK.
+  if (modelProfile?.base_url) {
+    logger.info(`Routing to OpenAI executor (model profile has base_url: ${modelProfile.base_url})`);
+    return runOpenAIAgentLoop(
+      prompt, sourceDir, context, description, agentName,
+      auditSession, logger, modelTier, turnBuffer, modelProfile
+    );
+  }
+
   // 1. Initialize timing and prompt
   const timer = new Timer(`agent-${description.toLowerCase().replace(/\s+/g, '-')}`);
   const fullPrompt = context ? `${context}\n\n${prompt}` : prompt;
@@ -240,8 +252,19 @@ export async function runClaudePrompt(
 
   logger.info(`Running Claude Code: ${description}...`);
 
+  // 2b. Resolve working directory — use temp dir for black-box scans (no source code)
+  let effectiveCwd = sourceDir;
+  if (!sourceDir) {
+    // Use a stable workspace dir (created by activity layer) or create a fallback temp dir
+    const os = await import('os');
+    const fallbackDir = path.join(os.default.tmpdir(), 'donna-blackbox-fallback');
+    await fs.mkdirp(fallbackDir);
+    effectiveCwd = fallbackDir;
+    logger.info(`Black-box mode: using workspace ${effectiveCwd}`);
+  }
+
   // 3. Configure MCP servers
-  const mcpServers = buildMcpServers(sourceDir, agentName, logger);
+  const mcpServers = buildMcpServers(effectiveCwd, agentName, logger);
 
   // 4. Resolve model and endpoint from profile (or legacy env vars)
   const endpoint: ResolvedModelEndpoint = resolveModelFromProfile(modelTier, modelProfile);
@@ -310,7 +333,7 @@ export async function runClaudePrompt(
   const options = {
     model: endpoint.model,
     maxTurns: 10_000,
-    cwd: sourceDir,
+    cwd: effectiveCwd,
     permissionMode: 'bypassPermissions' as const,
     allowDangerouslySkipPermissions: true,
     mcpServers,
@@ -318,7 +341,7 @@ export async function runClaudePrompt(
   };
 
   if (!execContext.useCleanOutput) {
-    logger.info(`SDK Options: maxTurns=${options.maxTurns}, cwd=${sourceDir}, permissions=BYPASS`);
+    logger.info(`SDK Options: maxTurns=${options.maxTurns}, cwd=${effectiveCwd}, permissions=BYPASS`);
   }
 
   let turnCount = 0;
@@ -485,7 +508,8 @@ async function processMessageStream(
         }
         const label = agentName || description;
         const truncated = snippet.slice(0, 250).replace(/\n/g, ' ');
-        turnBuffer.push(`Turn ${turnCount} (${label}): ${truncated}`);
+        const ts = new Date().toISOString();
+        turnBuffer.push(`[${ts}] Turn ${turnCount} (${label}): ${truncated}`);
       }
     }
 

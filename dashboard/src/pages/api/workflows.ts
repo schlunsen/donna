@@ -19,6 +19,7 @@
 import type { APIRoute } from 'astro';
 import { listWorkflowsWithProgress, startWorkflow } from '../../lib/temporal.js';
 import { validateWebUrl } from '../../lib/url-validation.js';
+import { getModelProfileFromSettings } from '../../lib/llm-settings.js';
 
 export const GET: APIRoute = async ({ url, locals }) => {
   const session = (locals as any).session;
@@ -66,16 +67,17 @@ export const POST: APIRoute = async ({ request, locals }) => {
 
   try {
     const body = await request.json();
-    const { webUrl, repoPath, pipelineTestingMode, modelProfile } = body as {
+    const { webUrl, repoPath, gitUrl, pipelineTestingMode, modelProfile } = body as {
       webUrl?: string;
       repoPath?: string;
+      gitUrl?: string;
       pipelineTestingMode?: boolean;
       modelProfile?: string;
     };
 
-    if (!webUrl || !repoPath) {
+    if (!webUrl) {
       return new Response(
-        JSON.stringify({ error: 'webUrl and repoPath are required' }),
+        JSON.stringify({ error: 'webUrl is required' }),
         { status: 400, headers: { 'Content-Type': 'application/json' } }
       );
     }
@@ -89,13 +91,42 @@ export const POST: APIRoute = async ({ request, locals }) => {
       );
     }
 
+    // Validate gitUrl if provided — only allow https:// and git:// schemes
+    if (gitUrl) {
+      try {
+        const parsed = new URL(gitUrl);
+        if (parsed.protocol !== 'https:' && parsed.protocol !== 'git:') {
+          return new Response(
+            JSON.stringify({ error: 'Git URL must use https:// or git:// scheme' }),
+            { status: 400, headers: { 'Content-Type': 'application/json' } }
+          );
+        }
+      } catch {
+        return new Response(
+          JSON.stringify({ error: 'Invalid Git Repository URL format' }),
+          { status: 400, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+    }
+
+    // If a non-Claude profile is selected, load its inline config from LLM settings
+    let modelProfileConfig: { base_url: string; api_key: string; tiers: { small: string; medium: string; large: string } } | undefined;
+    if (modelProfile && modelProfile !== 'claude') {
+      const profileConfig = await getModelProfileFromSettings(modelProfile);
+      if (profileConfig) {
+        modelProfileConfig = profileConfig;
+      }
+    }
+
     // Pass user email to associate workflow with creator
     const result = await startWorkflow({
       webUrl,
-      repoPath,
+      ...(repoPath && { repoPath }),
+      ...(gitUrl && { gitUrl }),
       pipelineTestingMode,
       createdByEmail: session.user.email,
       modelProfile,
+      modelProfileConfig,
     });
 
     return new Response(JSON.stringify(result), {

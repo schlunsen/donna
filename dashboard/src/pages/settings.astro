@@ -41,7 +41,7 @@ const user = session?.user;
                             <h1 class="page-title">
                                 <span class="gradient-text">Settings</span>
                             </h1>
-                            <p class="page-subtitle">Manage your account</p>
+                            <p class="page-subtitle">Manage your account and LLM providers</p>
                         </div>
                     </div>
                 </div>
@@ -57,6 +57,60 @@ const user = session?.user;
                         <div class="settings-row">
                             <span class="settings-label">Name</span>
                             <span class="settings-value">{user?.name || '—'}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- LLM Providers -->
+                <div class="settings-section">
+                    <h2 class="settings-section-title">LLM Providers</h2>
+                    <p class="settings-section-desc">Configure local or custom LLM endpoints for scanning. These providers appear in the model selector when starting a scan.</p>
+
+                    <div class="settings-card llm-provider-card">
+                        <div class="llm-provider-header">
+                            <div class="llm-provider-title">
+                                <span class="model-badge model-qwen">qwen</span>
+                                <span class="llm-provider-name">Qwen Local (vLLM / OpenAI-compatible)</span>
+                            </div>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="qwenEnabled" />
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+
+                        <div class="llm-provider-fields" id="qwenFields">
+                            <div class="form-group">
+                                <label class="form-label" for="qwenBaseUrl">Base URL</label>
+                                <input type="url" id="qwenBaseUrl" class="form-input" placeholder="http://host.docker.internal:8000" />
+                                <small class="form-hint">OpenAI-compatible API endpoint (vLLM, Ollama, TGI, etc.)</small>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="qwenApiKey">API Key <span style="color: var(--text-muted); font-weight: normal;">(optional)</span></label>
+                                <input type="password" id="qwenApiKey" class="form-input" placeholder="Leave empty if not required" autocomplete="off" />
+                                <small class="form-hint">API key for the endpoint. Often not required for local models.</small>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="qwenModel">Model Name</label>
+                                <input type="text" id="qwenModel" class="form-input" placeholder="Qwen/Qwen3.5-35B-A3B-FP8" />
+                                <small class="form-hint">Model ID as served by your endpoint. Used for all tiers (small/medium/large).</small>
+                            </div>
+                            <div class="llm-provider-actions">
+                                <button class="btn btn-sm btn-secondary" id="qwenTestBtn">
+                                    <span id="qwenTestLabel">Test Connection</span>
+                                    <span id="qwenTestSpinner" style="display: none;">Testing...</span>
+                                </button>
+                                <span id="qwenTestResult" class="llm-test-result"></span>
+                            </div>
+                        </div>
+
+                        <div id="llmError" class="settings-error" style="display: none;"></div>
+                        <div id="llmSuccess" class="settings-success" style="display: none;"></div>
+
+                        <div class="llm-provider-footer">
+                            <button class="btn btn-primary" id="llmSaveBtn">
+                                <span id="llmSaveLabel">Save LLM Settings</span>
+                                <span id="llmSaveSpinner" style="display: none;">Saving...</span>
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -92,6 +146,137 @@ const user = session?.user;
     </div>
 
     <script is:inline>
+        // ── LLM Provider Settings ──────────────────
+        (async function initLlmSettings() {
+            const enabledCb = document.getElementById('qwenEnabled');
+            const fieldsEl = document.getElementById('qwenFields');
+            const baseUrlEl = document.getElementById('qwenBaseUrl');
+            const apiKeyEl = document.getElementById('qwenApiKey');
+            const modelEl = document.getElementById('qwenModel');
+            const saveBtn = document.getElementById('llmSaveBtn');
+            const testBtn = document.getElementById('qwenTestBtn');
+            const llmError = document.getElementById('llmError');
+            const llmSuccess = document.getElementById('llmSuccess');
+            const testResult = document.getElementById('qwenTestResult');
+
+            // Toggle field visibility
+            function updateFieldsVisibility() {
+                fieldsEl.style.opacity = enabledCb.checked ? '1' : '0.4';
+                fieldsEl.style.pointerEvents = enabledCb.checked ? '' : 'none';
+            }
+            enabledCb.addEventListener('change', updateFieldsVisibility);
+
+            // Load current settings
+            try {
+                const res = await fetch('/api/settings/llm');
+                if (res.ok) {
+                    const settings = await res.json();
+                    const qwen = settings.providers?.['qwen-local'];
+                    if (qwen) {
+                        enabledCb.checked = qwen.enabled || false;
+                        baseUrlEl.value = qwen.baseUrl || '';
+                        apiKeyEl.value = qwen.apiKey || '';
+                        modelEl.value = qwen.model || '';
+                    }
+                }
+            } catch (e) {
+                console.error('Failed to load LLM settings:', e);
+            }
+            updateFieldsVisibility();
+
+            // Save settings
+            saveBtn.addEventListener('click', async () => {
+                llmError.style.display = 'none';
+                llmSuccess.style.display = 'none';
+                saveBtn.disabled = true;
+                document.getElementById('llmSaveLabel').style.display = 'none';
+                document.getElementById('llmSaveSpinner').style.display = '';
+
+                try {
+                    const payload = {
+                        providers: {
+                            'qwen-local': {
+                                enabled: enabledCb.checked,
+                                baseUrl: baseUrlEl.value.trim(),
+                                apiKey: apiKeyEl.value,
+                                model: modelEl.value.trim(),
+                            },
+                        },
+                    };
+
+                    const res = await fetch('/api/settings/llm', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload),
+                    });
+
+                    if (!res.ok) {
+                        const data = await res.json().catch(() => ({}));
+                        throw new Error(data.error || 'Failed to save settings');
+                    }
+
+                    llmSuccess.textContent = 'LLM settings saved successfully!';
+                    llmSuccess.style.display = 'block';
+                } catch (err) {
+                    llmError.textContent = err.message || 'Failed to save settings';
+                    llmError.style.display = 'block';
+                } finally {
+                    saveBtn.disabled = false;
+                    document.getElementById('llmSaveLabel').style.display = '';
+                    document.getElementById('llmSaveSpinner').style.display = 'none';
+                }
+            });
+
+            // Test connection
+            testBtn.addEventListener('click', async () => {
+                testResult.textContent = '';
+                testResult.className = 'llm-test-result';
+                testBtn.disabled = true;
+                document.getElementById('qwenTestLabel').style.display = 'none';
+                document.getElementById('qwenTestSpinner').style.display = '';
+
+                const baseUrl = baseUrlEl.value.trim().replace(/\/+$/, '');
+                const apiKey = apiKeyEl.value;
+
+                if (!baseUrl) {
+                    testResult.textContent = 'Enter a base URL first';
+                    testResult.classList.add('test-error');
+                    testBtn.disabled = false;
+                    document.getElementById('qwenTestLabel').style.display = '';
+                    document.getElementById('qwenTestSpinner').style.display = 'none';
+                    return;
+                }
+
+                try {
+                    // Test via server-side proxy (browser can't reach server-local URLs)
+                    const res = await fetch('/api/settings/llm', {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ baseUrl, apiKey }),
+                    });
+
+                    const data = await res.json();
+
+                    if (res.ok && data.ok) {
+                        const modelNames = (data.models || []).join(', ');
+                        testResult.textContent = `Connected! ${data.modelCount} model(s): ${modelNames}`;
+                        testResult.classList.add('test-success');
+                    } else {
+                        testResult.textContent = `Connection failed: ${data.error || 'Unknown error'}`;
+                        testResult.classList.add('test-error');
+                    }
+                } catch (err) {
+                    testResult.textContent = `Connection failed: ${err.message || 'Network error'}`;
+                    testResult.classList.add('test-error');
+                } finally {
+                    testBtn.disabled = false;
+                    document.getElementById('qwenTestLabel').style.display = '';
+                    document.getElementById('qwenTestSpinner').style.display = 'none';
+                }
+            });
+        })();
+
+        // ── Password Form ──────────────────────────
         const form = document.getElementById('passwordForm');
         const errorEl = document.getElementById('pwError');
         const successEl = document.getElementById('pwSuccess');
@@ -220,6 +405,147 @@ const user = session?.user;
         padding: 0.6rem 0.85rem;
         border-radius: var(--radius);
         margin-bottom: 1rem;
+    }
+
+    .settings-section-desc {
+        font-size: 0.8rem;
+        color: var(--text-muted);
+        margin-bottom: 1rem;
+        line-height: 1.5;
+    }
+
+    .llm-provider-card {
+        position: relative;
+    }
+
+    .llm-provider-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 1.25rem;
+        padding-bottom: 1rem;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .llm-provider-title {
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+    }
+
+    .llm-provider-name {
+        font-size: 0.85rem;
+        color: var(--text);
+        font-weight: 500;
+    }
+
+    /* Toggle switch */
+    .toggle-switch {
+        position: relative;
+        display: inline-block;
+        width: 40px;
+        height: 22px;
+        cursor: pointer;
+    }
+
+    .toggle-switch input {
+        opacity: 0;
+        width: 0;
+        height: 0;
+    }
+
+    .toggle-slider {
+        position: absolute;
+        inset: 0;
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 22px;
+        transition: background 0.2s;
+    }
+
+    .toggle-slider::before {
+        content: '';
+        position: absolute;
+        left: 3px;
+        top: 3px;
+        width: 16px;
+        height: 16px;
+        background: var(--text-dim);
+        border-radius: 50%;
+        transition: transform 0.2s, background 0.2s;
+    }
+
+    .toggle-switch input:checked + .toggle-slider {
+        background: var(--primary);
+    }
+
+    .toggle-switch input:checked + .toggle-slider::before {
+        transform: translateX(18px);
+        background: var(--white);
+    }
+
+    .llm-provider-fields {
+        transition: opacity 0.2s;
+    }
+
+    .llm-provider-fields .form-group {
+        margin-bottom: 1rem;
+        max-width: 500px;
+    }
+
+    .form-hint {
+        display: block;
+        font-size: 0.72rem;
+        color: var(--text-muted);
+        margin-top: 0.35rem;
+        line-height: 1.4;
+    }
+
+    .llm-provider-actions {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        margin-top: 0.5rem;
+        margin-bottom: 1rem;
+    }
+
+    .btn-sm {
+        padding: 0.35rem 0.75rem;
+        font-size: 0.75rem;
+    }
+
+    .llm-test-result {
+        font-size: 0.78rem;
+        font-family: var(--font-mono);
+    }
+
+    .llm-test-result.test-success {
+        color: var(--success);
+    }
+
+    .llm-test-result.test-error {
+        color: var(--error);
+    }
+
+    .llm-provider-footer {
+        margin-top: 1.25rem;
+        padding-top: 1rem;
+        border-top: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .model-badge {
+        display: inline-block;
+        font-size: 0.7rem;
+        font-weight: 600;
+        padding: 0.15rem 0.45rem;
+        border-radius: 4px;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+    }
+
+    .model-badge.model-qwen {
+        background: rgba(139, 92, 246, 0.15);
+        color: rgb(167, 139, 250);
+        border: 1px solid rgba(139, 92, 246, 0.3);
     }
 
     @media (max-width: 768px) {

@@ -12,7 +12,9 @@ import type { PipelineConfig } from '../types/config.js';
 
 export interface PipelineInput {
   webUrl: string;
-  repoPath: string;
+  repoPath?: string;
+  /** Optional Git repository URL to clone on the worker. Overrides repoPath if both are set. */
+  gitUrl?: string;
   configPath?: string;
   outputPath?: string;
   pipelineTestingMode?: boolean;
@@ -23,6 +25,12 @@ export interface PipelineInput {
   terminatedWorkflows?: string[]; // Workflows terminated during resume
   parentRunId?: string; // Run ID of the parent workflow this was started from
   modelProfile?: string; // Model profile name override (from --model-profile CLI flag)
+  /** Inline model profile config from dashboard LLM settings (overrides built-in profile). */
+  modelProfileConfig?: {
+    base_url: string;
+    api_key?: string;
+    tiers: { small: string; medium: string; large: string };
+  };
 }
 
 export interface ResumeState {

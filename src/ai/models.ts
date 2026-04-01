@@ -38,6 +38,23 @@ export const BUILTIN_CLAUDE_PROFILE: ModelProfile = {
   },
 };
 
+/** Built-in Qwen profile — routes all tiers directly to local vLLM (bypasses LiteLLM). */
+export const BUILTIN_QWEN_LOCAL_PROFILE: ModelProfile = {
+  base_url: process.env.VLLM_BASE_URL || 'http://host.docker.internal:8000',
+  api_key_env: 'VLLM_API_KEY',
+  tiers: {
+    small: 'Qwen/Qwen3.5-35B-A3B-FP8',
+    medium: 'Qwen/Qwen3.5-35B-A3B-FP8',
+    large: 'Qwen/Qwen3.5-35B-A3B-FP8',
+  },
+};
+
+/** Map of built-in profile names to their definitions. */
+export const BUILTIN_PROFILES: Readonly<Record<string, ModelProfile>> = {
+  claude: BUILTIN_CLAUDE_PROFILE,
+  'qwen-local': BUILTIN_QWEN_LOCAL_PROFILE,
+};
+
 /** Resolve a model tier to a concrete model ID (legacy path, env-var based). */
 export function resolveModel(tier: ModelTier = 'medium'): string {
   switch (tier) {
@@ -83,5 +100,6 @@ export function resolveModelFromProfile(
     model: profile.tiers[tier],
     base_url: profile.base_url,
     api_key_env: profile.api_key_env,
+    api_key: profile.api_key,
   };
 }

@@ -321,7 +321,7 @@ if (periodFilter === 'hour') activeFilterLabel = 'Last Hour';
                                         <span class="cell-runid" title={wf.runId}>{wf.runId.slice(0, 8)}…</span>
                                     </td>
                                     <td class="cell-type">
-                                        <span class={`model-badge ${wf.modelProfile === 'claude' ? 'model-claude' : wf.modelProfile === 'hybrid' ? 'model-hybrid' : 'model-custom'}`}>
+                                        <span class={`model-badge ${wf.modelProfile === 'claude' ? 'model-claude' : wf.modelProfile === 'qwen-local' ? 'model-qwen' : wf.modelProfile === 'hybrid' ? 'model-hybrid' : 'model-custom'}`}>
                                             {wf.modelProfile}
                                         </span>
                                     </td>
@@ -412,11 +412,38 @@ if (periodFilter === 'hour') activeFilterLabel = 'Last Hour';
                     <input type="url" class="form-input" id="workflowTarget" placeholder="https://example.com" required />
                 </div>
                 <div class="form-group">
-                    <label class="form-label">Repository Path</label>
-                    <input type="text" class="form-input" id="workflowRepoPath" placeholder="/repos/my-app" required />
+                    <label class="form-label">Repository Path <span style="color: var(--text-muted); font-weight: normal;">(optional)</span></label>
+                    <input type="text" class="form-input" id="workflowRepoPath" placeholder="/repos/my-app" />
                     <small style="color: var(--text-muted); font-size: 0.75rem;">
-                        Path to the target's source code repository on the worker
+                        Path to the target's source code repository on the worker. Leave empty for black-box scanning (no source code).
                     </small>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Git Repository URL <span style="color: var(--text-muted); font-weight: normal;">(optional)</span></label>
+                    <input type="url" class="form-input" id="workflowGitUrl" placeholder="https://github.com/org/repo.git" />
+                    <small style="color: var(--text-muted); font-size: 0.75rem;">
+                        URL of a Git repository to clone on the worker. If provided, Repository Path above is ignored.
+                    </small>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Model Profile</label>
+                    <div class="model-profile-options" id="startScanModelOptions">
+                        <label class="model-option selected" data-profile="claude">
+                            <input type="radio" name="startScanModel" value="claude" checked />
+                            <span class="model-option-inner">
+                                <span class="model-option-name"><span class="model-badge model-claude">claude</span></span>
+                                <span class="model-option-desc">Default Anthropic Claude models</span>
+                            </span>
+                        </label>
+                        <label class="model-option" data-profile="qwen-local" id="qwenLocalOption">
+                            <input type="radio" name="startScanModel" value="qwen-local" />
+                            <span class="model-option-inner">
+                                <span class="model-option-name"><span class="model-badge model-qwen">qwen</span></span>
+                                <span class="model-option-desc">Local Qwen models via OpenAI-compatible API</span>
+                                <span class="model-option-status" id="qwenLocalStatus"></span>
+                            </span>
+                        </label>
+                    </div>
                 </div>
                 <div class="form-group" style="display: flex; align-items: center; gap: 0.5rem;">
                     <input type="checkbox" id="workflowTestingMode" />
@@ -552,9 +579,40 @@ if (periodFilter === 'hour') activeFilterLabel = 'Last Hour';
             document.getElementById('submitWorkflow').disabled = false;
         }
 
-        document.getElementById('startWorkflowBtn')?.addEventListener('click', () => {
+        document.getElementById('startWorkflowBtn')?.addEventListener('click', async () => {
             resetModalState();
             modal?.classList.add('open');
+
+            // Check if qwen-local is configured
+            const statusEl = document.getElementById('qwenLocalStatus');
+            const qwenOption = document.getElementById('qwenLocalOption');
+            try {
+                const res = await fetch('/api/settings/llm');
+                if (res.ok) {
+                    const settings = await res.json();
+                    const qwen = settings.providers?.['qwen-local'];
+                    if (qwen?.enabled && qwen?.baseUrl && qwen?.model) {
+                        statusEl.textContent = `${qwen.model} @ ${qwen.baseUrl}`;
+                        statusEl.className = 'model-option-status configured';
+                        qwenOption.classList.remove('disabled');
+                        qwenOption.querySelector('input').disabled = false;
+                    } else {
+                        statusEl.innerHTML = 'Not configured — <a href="/settings" style="color: var(--primary);">configure in Settings</a>';
+                        statusEl.className = 'model-option-status not-configured';
+                        qwenOption.classList.add('disabled');
+                        qwenOption.querySelector('input').disabled = true;
+                        // If qwen was selected, switch back to claude
+                        if (qwenOption.querySelector('input').checked) {
+                            qwenOption.classList.remove('selected');
+                            const claudeOption = document.querySelector('[data-profile="claude"]');
+                            claudeOption.classList.add('selected');
+                            claudeOption.querySelector('input').checked = true;
+                        }
+                    }
+                }
+            } catch (e) {
+                statusEl.textContent = '';
+            }
         });
         document.getElementById('closeModal')?.addEventListener('click', () => {
             modal?.classList.remove('open');
@@ -566,14 +624,40 @@ if (periodFilter === 'hour') activeFilterLabel = 'Last Hour';
             if (e.target === modal) modal.classList.remove('open');
         });
 
+        // Git URL / Repo Path mutual exclusion — disable the other field when one is filled
+        const gitUrlInput = document.getElementById('workflowGitUrl');
+        const repoPathInput = document.getElementById('workflowRepoPath');
+        gitUrlInput?.addEventListener('input', () => {
+            const hasValue = !!gitUrlInput.value.trim();
+            repoPathInput.disabled = hasValue;
+            repoPathInput.style.opacity = hasValue ? '0.5' : '1';
+        });
+        repoPathInput?.addEventListener('input', () => {
+            const hasValue = !!repoPathInput.value.trim();
+            gitUrlInput.disabled = hasValue;
+            gitUrlInput.style.opacity = hasValue ? '0.5' : '1';
+        });
+
+        // Model profile option selection (radio button visual toggling)
+        document.querySelectorAll('#startScanModelOptions .model-option').forEach(opt => {
+            opt.addEventListener('click', () => {
+                document.querySelectorAll('#startScanModelOptions .model-option').forEach(o => o.classList.remove('selected'));
+                opt.classList.add('selected');
+                opt.querySelector('input[type="radio"]').checked = true;
+            });
+        });
+
         // Submit scan
         document.getElementById('submitWorkflow')?.addEventListener('click', async () => {
             const webUrl = document.getElementById('workflowTarget')?.value?.trim();
             const repoPath = document.getElementById('workflowRepoPath')?.value?.trim();
+            const gitUrl = document.getElementById('workflowGitUrl')?.value?.trim();
             const pipelineTestingMode = document.getElementById('workflowTestingMode')?.checked || false;
+            const modelProfileEl = document.querySelector('input[name="startScanModel"]:checked');
+            const modelProfile = modelProfileEl?.value || 'claude';
 
-            if (!webUrl || !repoPath) {
-                startError.textContent = 'Target URL and Repository Path are required.';
+            if (!webUrl) {
+                startError.textContent = 'Target URL is required.';
                 startError.style.display = 'block';
                 return;
             }
@@ -589,7 +673,7 @@ if (periodFilter === 'hour') activeFilterLabel = 'Last Hour';
                 const res = await fetch('/api/workflows', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ webUrl, repoPath, pipelineTestingMode }),
+                    body: JSON.stringify({ webUrl, ...(repoPath && { repoPath }), ...(gitUrl && { gitUrl }), pipelineTestingMode, modelProfile }),
                 });
                 const data = await res.json();
 

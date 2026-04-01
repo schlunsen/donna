@@ -11,6 +11,7 @@ import { Ajv, type ValidateFunction, type ErrorObject } from 'ajv';
 import type { FormatsPlugin } from 'ajv-formats';
 import { PentestError } from './services/error-handling.js';
 import { ErrorCode } from './types/errors.js';
+import { BUILTIN_PROFILES } from './ai/models.js';
 import type {
   Config,
   Rule,
@@ -535,32 +536,45 @@ const sanitizeRule = (rule: Rule): Rule => {
 
 /**
  * Resolve which model profile is active, given config + optional CLI override.
+ *
+ * Resolution order:
+ * 1. Config file profiles (if config has models.profiles)
+ * 2. Built-in profiles (claude, qwen-local) — works without a config file
  */
 export function resolveActiveProfile(
   config: Config | null,
   profileOverride?: string
 ): ModelProfile | undefined {
   const modelsConfig = config?.models;
-  if (!modelsConfig?.profiles) return undefined;
 
   const profileName = profileOverride
     ?? config?.pipeline?.model_profile
-    ?? modelsConfig.default_profile;
+    ?? modelsConfig?.default_profile;
 
   if (!profileName) return undefined;
 
-  const profile = modelsConfig.profiles[profileName];
-  if (!profile) {
-    throw new PentestError(
-      `Model profile "${profileName}" not found. Available profiles: ${Object.keys(modelsConfig.profiles).join(', ')}`,
-      'config',
-      false,
-      { profileName, availableProfiles: Object.keys(modelsConfig.profiles) },
-      ErrorCode.CONFIG_VALIDATION_FAILED
-    );
+  // 1. Try config-defined profiles first
+  if (modelsConfig?.profiles) {
+    const profile = modelsConfig.profiles[profileName];
+    if (profile) return profile;
   }
 
-  return profile;
+  // 2. Fall back to built-in profiles (works without a config file)
+  const builtinProfile = BUILTIN_PROFILES[profileName];
+  if (builtinProfile) return builtinProfile;
+
+  // 3. Not found anywhere
+  const availableProfiles = [
+    ...Object.keys(modelsConfig?.profiles ?? {}),
+    ...Object.keys(BUILTIN_PROFILES),
+  ];
+  throw new PentestError(
+    `Model profile "${profileName}" not found. Available profiles: ${availableProfiles.join(', ')}`,
+    'config',
+    false,
+    { profileName, availableProfiles },
+    ErrorCode.CONFIG_VALIDATION_FAILED
+  );
 }
 
 export const distributeConfig = (

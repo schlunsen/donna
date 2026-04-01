@@ -34,6 +34,12 @@ export interface ContainerDependencies {
   readonly sessionMetadata: SessionMetadata;
   /** Model profile name override from CLI --model-profile flag. */
   readonly modelProfileOverride?: string | undefined;
+  /** Inline model profile config from dashboard LLM settings. */
+  readonly modelProfileConfig?: {
+    base_url: string;
+    api_key?: string;
+    tiers: { small: string; medium: string; large: string };
+  } | undefined;
 }
 
 /**
@@ -55,7 +61,7 @@ export class Container {
     this.sessionMetadata = deps.sessionMetadata;
 
     // Wire services with explicit constructor injection
-    this.configLoader = new ConfigLoaderService(deps.modelProfileOverride);
+    this.configLoader = new ConfigLoaderService(deps.modelProfileOverride, deps.modelProfileConfig);
     this.exploitationChecker = new ExploitationCheckerService();
     this.agentExecution = new AgentExecutionService(this.configLoader);
   }
@@ -80,12 +86,13 @@ const containers = new Map<string, Container>();
 export function getOrCreateContainer(
   workflowId: string,
   sessionMetadata: SessionMetadata,
-  modelProfileOverride?: string
+  modelProfileOverride?: string,
+  modelProfileConfig?: ContainerDependencies['modelProfileConfig']
 ): Container {
   let container = containers.get(workflowId);
 
   if (!container) {
-    container = new Container({ sessionMetadata, modelProfileOverride });
+    container = new Container({ sessionMetadata, modelProfileOverride, modelProfileConfig });
     containers.set(workflowId, container);
   }
 
