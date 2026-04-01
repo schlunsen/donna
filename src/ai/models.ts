@@ -100,5 +100,6 @@ export function resolveModelFromProfile(
     model: profile.tiers[tier],
     base_url: profile.base_url,
     api_key_env: profile.api_key_env,
+    api_key: profile.api_key,
   };
 }

@@ -89,6 +89,8 @@ export interface ModelProfile {
   base_url?: string;
   /** Environment variable name holding the API key (default: ANTHROPIC_API_KEY). */
   api_key_env?: string;
+  /** Direct API key (from dashboard LLM settings). Takes priority over api_key_env. */
+  api_key?: string;
   /** Model ID for each tier. */
   tiers: {
     small: string;
@@ -111,6 +113,8 @@ export interface ResolvedModelEndpoint {
   model: string;
   base_url?: string | undefined;
   api_key_env?: string | undefined;
+  /** Direct API key (from dashboard LLM settings). Takes priority over api_key_env. */
+  api_key?: string | undefined;
 }
 
 export interface PipelineConfig {

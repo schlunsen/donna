@@ -363,7 +363,6 @@ a:hover { color: var(--pink); }
 
 .page-container {
     padding: 1.5rem;
-    max-width: 1600px;
 }
 
 /* ============================================
@@ -594,6 +593,31 @@ a:hover { color: var(--pink); }
 .model-option-desc {
     font-size: 0.8rem;
     color: var(--text-secondary);
+}
+
+.model-option-status {
+    font-size: 0.72rem;
+    font-family: var(--font-mono);
+    color: var(--text-muted);
+    margin-top: 0.1rem;
+}
+
+.model-option-status.configured {
+    color: var(--success, #10b981);
+}
+
+.model-option-status.not-configured {
+    color: var(--text-muted);
+}
+
+.model-option.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.model-option.disabled:hover {
+    border-color: var(--border);
+    background: transparent;
 }
 
 /* ============================================

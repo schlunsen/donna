@@ -175,8 +175,8 @@ async function validateCredentials(
     const profile = resolveActiveProfile(config ?? null, modelProfileOverride);
     if (profile?.base_url) {
       logger.info(`Model profile with custom endpoint (${profile.base_url}) — skipping Anthropic credential validation`);
-      // Verify the profile's API key env var is set
-      if (profile.api_key_env && !process.env[profile.api_key_env]) {
+      // Verify the profile's API key is available (direct key or env var)
+      if (!profile.api_key && profile.api_key_env && !process.env[profile.api_key_env]) {
         return err(
           new PentestError(
             `Model profile requires env var ${profile.api_key_env} but it is not set`,

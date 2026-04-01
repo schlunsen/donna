@@ -791,6 +791,12 @@ const totalDurationSec = Math.round((progress?.summary?.totalDurationMs ?? sessi
                             <button class="wf-tab" data-tab="query">Queries</button>
                             <button class="wf-tab" data-tab="search-attrs">Search Attributes</button>
                             <button class="wf-tab" data-tab="memo">Memo</button>
+                            <button class="wf-tab" data-tab="visualization">
+                                Visualization
+                                {wf.status === 'running' && (
+                                    <span class="wf-tab-badge live-badge">LIVE</span>
+                                )}
+                            </button>
                         </div>
 
                         {/* ── Tab: History ─────────────────────────── */}
@@ -1205,6 +1211,70 @@ const totalDurationSec = Math.round((progress?.summary?.totalDurationMs ?? sessi
                             </div>
                         </div>
 
+                        {/* ── Tab: Visualization ─────────────────────── */}
+                        <div class="wf-tab-content" id="tab-visualization">
+                            <div class="viz-container" id="vizContainer">
+                                <div class="viz-ripple-overlay" id="vizRippleOverlay"></div>
+                                {/* Top-left info */}
+                                <div class="viz-info">
+                                    <div class="viz-info-title">{wf.workflowId}</div>
+                                    <div class="viz-info-subtitle">{events.length} events · {agents.length} agents</div>
+                                </div>
+                                {/* Top-right mode toggle */}
+                                {wf.status === 'running' && (
+                                    <div class="viz-mode-toggle" id="vizModeToggle">
+                                        <button class="viz-mode-btn active" data-mode="history">History</button>
+                                        <button class="viz-mode-btn" data-mode="live">Live</button>
+                                    </div>
+                                )}
+                                {/* Catchup progress indicator (shown during fast-forward replay) */}
+                                <div class="viz-catchup-bar" id="vizCatchupBar" style="display:none;">
+                                    <div class="viz-catchup-inner">
+                                        <span class="viz-catchup-icon">&#9654;&#9654;</span>
+                                        <span class="viz-catchup-text">Replaying recent activity...</span>
+                                        <div class="viz-catchup-progress">
+                                            <div class="viz-catchup-fill" id="vizCatchupFill"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                {/* Bottom: Live status panel (shown in live mode) */}
+                                <div class="viz-live-panel" id="vizLivePanel" style={wf.status !== 'running' ? 'display:none' : ''}>
+                                    <span class="viz-live-dot pulse" id="vizLiveDot"></span>
+                                    <span class="viz-live-label">Live</span>
+                                    <span class="viz-live-agent" id="vizLiveAgent">waiting...</span>
+                                    <span class="viz-live-sep">·</span>
+                                    <span class="viz-live-count"><span id="vizLiveCount">0</span> events</span>
+                                    <span id="vizLiveStatus" class="viz-live-status"></span>
+                                    <button class="viz-btn viz-btn-sm" id="vizResetBtn" title="Clear">↺ Clear</button>
+                                </div>
+                                {/* Bottom: History controls (shown in history mode) */}
+                                <div class="viz-controls" id="vizHistoryControls">
+                                    <button class="viz-btn" id="vizPlayBtn" title="Play / Pause">▶ Play</button>
+                                    <button class="viz-btn" id="vizResetBtnHistory" title="Reset">↺ Reset</button>
+                                    <label class="viz-speed-label">
+                                        Speed
+                                        <input type="range" id="vizSpeedSlider" min="1" max="20" value="5" class="viz-speed-slider" />
+                                    </label>
+                                </div>
+                            </div>
+                            <script id="vizEventsData" type="application/json" set:html={JSON.stringify(events.map(ev => ({
+                                eventId: ev.eventId,
+                                eventType: ev.eventType,
+                                eventTime: ev.eventTime,
+                                category: ev.category,
+                                details: ev.details,
+                            })))}></script>
+                            <script id="vizAgentsData" type="application/json" set:html={JSON.stringify(agents.map(a => ({
+                                agentName: a.agentName,
+                                model: a.model,
+                                statusLabel: a.statusLabel,
+                                statusClass: a.statusClass,
+                                turns: a.turns,
+                                costUsd: a.costUsd,
+                                durationMs: a.durationMs,
+                            })))}></script>
+                        </div>
+
                         {/* Error for failed workflows */}
                         {progress?.error && (
                             <div class="error-card">
@@ -1248,7 +1318,7 @@ const totalDurationSec = Math.round((progress?.summary?.totalDurationMs ?? sessi
                         <input type="radio" name="modelProfile" value="qwen-local" />
                         <span class="model-option-inner">
                             <span class="model-option-name"><span class="model-badge model-qwen">qwen</span></span>
-                            <span class="model-option-desc">Local Qwen models via LiteLLM proxy</span>
+                            <span class="model-option-desc">Local Qwen models via vLLM (direct)</span>
                         </span>
                     </label>
                 </div>
@@ -1670,6 +1740,14 @@ const totalDurationSec = Math.round((progress?.summary?.totalDurationMs ?? sessi
             });
         }
 
+        // ── Global Viz Event Bus ──────────────────────
+        // Allows live logs polling to send events to the visualization tab
+        window.__vizBus = {
+            listeners: [],
+            on: function(fn) { this.listeners.push(fn); },
+            emit: function(ev) { this.listeners.forEach(function(fn) { fn(ev); }); },
+        };
+
         // ── Live Logs Polling ──────────────────────
         (function initLiveLogs() {
             const viewer = document.getElementById('liveLogsViewer');
@@ -1880,6 +1958,12 @@ const totalDurationSec = Math.round((progress?.summary?.totalDurationMs ?? sessi
                         // Hide the live dot
                         const dot = document.querySelector('.live-dot');
                         if (dot) dot.classList.remove('pulse');
+                        // Emit workflow completion to viz
+                        window.__vizBus.emit({
+                            type: 'workflow-done',
+                            status: data.status,
+                            time: new Date().toISOString(),
+                        });
                         return;
                     }
 
@@ -1893,6 +1977,13 @@ const totalDurationSec = Math.round((progress?.summary?.totalDurationMs ?? sessi
                                     marker.className = 'live-log-line agent-transition';
                                     marker.innerHTML = '<span class="transition-arrow">▸</span> <span class="transition-text">Agent switched to <strong>' + hb.agent + '</strong></span>';
                                     viewer.appendChild(marker);
+                                    // Emit agent transition to viz
+                                    window.__vizBus.emit({
+                                        type: 'agent-switch',
+                                        agent: hb.agent,
+                                        prevAgent: lastAgent,
+                                        time: new Date().toISOString(),
+                                    });
                                 }
                                 lastAgent = hb.agent;
                                 agentLabel.textContent = hb.agent;
@@ -1907,6 +1998,16 @@ const totalDurationSec = Math.round((progress?.summary?.totalDurationMs ?? sessi
                             // Append turn lines
                             if (Array.isArray(hb.recentTurns)) {
                                 for (const turn of hb.recentTurns) {
+                                    if (!seenLines.has(turn)) {
+                                        // Emit each new turn line to the viz bus
+                                        window.__vizBus.emit({
+                                            type: 'turn',
+                                            text: turn,
+                                            agent: hb.agent || lastAgent,
+                                            model: hb.model,
+                                            time: new Date().toISOString(),
+                                        });
+                                    }
                                     appendLine(turn);
                                 }
                             }
@@ -1967,6 +2068,615 @@ const totalDurationSec = Math.round((progress?.summary?.totalDurationMs ?? sessi
             });
         })();
 
+        // ── Visualization ──────────────────────────
+        (function initVisualization() {
+            const container = document.getElementById('vizContainer');
+            const overlay = document.getElementById('vizRippleOverlay');
+            const playBtn = document.getElementById('vizPlayBtn');
+            const resetBtn = document.getElementById('vizResetBtnHistory');
+            const resetBtnLive = document.getElementById('vizResetBtn');
+            const speedSlider = document.getElementById('vizSpeedSlider');
+            const modeToggle = document.getElementById('vizModeToggle');
+            const liveDot = document.getElementById('vizLiveDot');
+            const liveCountEl = document.getElementById('vizLiveCount');
+            const liveAgentEl = document.getElementById('vizLiveAgent');
+            const liveStatusEl = document.getElementById('vizLiveStatus');
+            const catchupBar = document.getElementById('vizCatchupBar');
+            const catchupFill = document.getElementById('vizCatchupFill');
+
+            if (!container || !overlay) return;
+
+            let vizEvents = [];
+            let vizAgents = [];
+            try {
+                vizEvents = JSON.parse(document.getElementById('vizEventsData')?.textContent || '[]');
+                vizAgents = JSON.parse(document.getElementById('vizAgentsData')?.textContent || '[]');
+            } catch(e) { console.error('Failed to parse viz data', e); }
+
+            // Color palette by event category
+            const CATEGORY_COLORS = {
+                'workflow':  '#8B5CF6',
+                'activity':  '#22D3EE',
+                'timer':     '#FBBF24',
+                'signal':    '#F472B6',
+                'child':     '#34D399',
+                'command':   '#4ADE80',
+                'marker':    '#A78BFA',
+                'default':   '#6B7280',
+            };
+
+            // Agent colors
+            const AGENT_COLORS = [
+                '#22D3EE', '#34D399', '#FBBF24', '#F472B6',
+                '#A78BFA', '#4ADE80', '#3B82F6', '#EF4444',
+                '#8B5CF6', '#F59E0B', '#10B981', '#EC4899',
+            ];
+
+            const agentColorMap = {};
+            let nextAgentColorIdx = 0;
+            vizAgents.forEach(function(a, i) {
+                agentColorMap[a.agentName] = AGENT_COLORS[i % AGENT_COLORS.length];
+                nextAgentColorIdx = (i + 1) % AGENT_COLORS.length;
+            });
+
+            function getAgentColor(name) {
+                if (!name) return '#22D3EE';
+                if (!agentColorMap[name]) {
+                    agentColorMap[name] = AGENT_COLORS[nextAgentColorIdx % AGENT_COLORS.length];
+                    nextAgentColorIdx++;
+                }
+                return agentColorMap[name];
+            }
+
+            // ── Human-friendly event labels ──
+            // Map raw Temporal event types to short, readable descriptions
+            const EVENT_TYPE_LABELS = {
+                'WorkflowExecutionStarted': 'Workflow started',
+                'WorkflowTaskScheduled': 'Processing...',
+                'WorkflowTaskStarted': 'Processing...',
+                'WorkflowTaskCompleted': 'Step completed',
+                'ActivityTaskScheduled': 'Scheduling agent',
+                'ActivityTaskStarted': 'Agent running',
+                'ActivityTaskCompleted': 'Agent finished',
+                'ActivityTaskFailed': 'Agent failed',
+                'ActivityTaskTimedOut': 'Agent timed out',
+                'TimerStarted': 'Timer set',
+                'TimerFired': 'Timer elapsed',
+                'MarkerRecorded': 'Checkpoint',
+                'WorkflowExecutionCompleted': 'Scan complete',
+                'WorkflowExecutionFailed': 'Scan failed',
+                'WorkflowExecutionTerminated': 'Scan terminated',
+                'WorkflowExecutionCanceled': 'Scan cancelled',
+                'StartChildWorkflowExecutionInitiated': 'Starting sub-workflow',
+                'ChildWorkflowExecutionCompleted': 'Sub-workflow done',
+                'SignalExternalWorkflowExecutionInitiated': 'Sending signal',
+            };
+
+            // Agent name to human-readable description
+            const AGENT_DESCRIPTIONS = {
+                'pre-recon': 'Mapping target surface',
+                'recon': 'Deep reconnaissance',
+                'auth-vuln': 'Scanning authentication',
+                'auth-exploit': 'Testing auth exploits',
+                'xss-vuln': 'Scanning for XSS',
+                'xss-exploit': 'Testing XSS exploits',
+                'ssrf-vuln': 'Scanning for SSRF',
+                'ssrf-exploit': 'Testing SSRF exploits',
+                'injection-vuln': 'Scanning for injections',
+                'injection-exploit': 'Testing injection exploits',
+                'authz-vuln': 'Scanning authorization',
+                'authz-exploit': 'Testing authz exploits',
+                'report': 'Generating report',
+            };
+
+            // Tool name to readable verb
+            function humanizeToolName(toolName) {
+                const map = {
+                    'bash': 'Running command',
+                    'read_file': 'Reading file',
+                    'write_file': 'Writing file',
+                    'glob_search': 'Searching files',
+                    'grep_search': 'Searching code',
+                    'list_directory': 'Listing directory',
+                    'save_deliverable': 'Saving finding',
+                    'generate_totp': 'Generating TOTP',
+                    'Bash': 'Running command',
+                    'Read': 'Reading file',
+                    'Write': 'Writing file',
+                    'Glob': 'Searching files',
+                    'Grep': 'Searching code',
+                };
+                return map[toolName] || toolName;
+            }
+
+            // Zone grid for spatial distribution (4x3 LRU)
+            const GRID_COLS = 4;
+            const GRID_ROWS = 3;
+            const TOTAL_ZONES = GRID_COLS * GRID_ROWS;
+            const zoneLastUsed = new Array(TOTAL_ZONES).fill(0);
+            const MAX_ACTIVE_RIPPLES = 12;
+            const RIPPLE_LIFETIME_MS = 5000;
+            let activeRipples = [];
+            let isPlaying = false;
+            let playTimer = null;
+            let eventIndex = 0;
+
+            // Mode: 'history' or 'live'
+            let vizMode = 'history';
+            let isLiveActive = false;
+            let liveEventCount = 0;
+            let isCatchingUp = false;  // true during the fast-forward replay
+            let catchupTimer = null;
+            let catchupQueue = [];     // queued live events during catchup
+
+            function pickZone() {
+                let lruIndex = 0;
+                let lruTime = zoneLastUsed[0];
+                for (let i = 1; i < TOTAL_ZONES; i++) {
+                    if (zoneLastUsed[i] < lruTime) {
+                        lruTime = zoneLastUsed[i];
+                        lruIndex = i;
+                    }
+                }
+                zoneLastUsed[lruIndex] = Date.now();
+                const col = lruIndex % GRID_COLS;
+                const row = Math.floor(lruIndex / GRID_COLS);
+                const padX = 8, padY = 10;
+                const spanX = 100 - padX * 2;
+                const spanY = 100 - padY * 2;
+                const cellW = spanX / GRID_COLS;
+                const cellH = spanY / GRID_ROWS;
+                const jitterX = (Math.random() - 0.5) * cellW * 0.5;
+                const jitterY = (Math.random() - 0.5) * cellH * 0.5;
+                const x = padX + cellW * (col + 0.5) + jitterX;
+                const y = padY + cellH * (row + 0.5) + jitterY;
+                return { x: x, y: y, zoneIndex: lruIndex };
+            }
+
+            function removeRipple(ripple) {
+                clearTimeout(ripple.timeout);
+                if (ripple.element.parentElement) ripple.element.remove();
+                const idx = activeRipples.indexOf(ripple);
+                if (idx !== -1) activeRipples.splice(idx, 1);
+            }
+
+            function forceRemoveOldest() {
+                if (activeRipples.length === 0) return;
+                const oldest = activeRipples[0];
+                oldest.element.style.animation = 'none';
+                oldest.element.style.transition = 'opacity 300ms ease-out, transform 300ms ease-out';
+                oldest.element.style.opacity = '0';
+                oldest.element.style.transform += ' scale(0.8)';
+                setTimeout(function() { removeRipple(oldest); }, 300);
+            }
+
+            // ── Create ripple DOM element ──
+            function createRipple(color, label, sublabel, timestamp) {
+                while (activeRipples.length >= MAX_ACTIVE_RIPPLES) {
+                    forceRemoveOldest();
+                }
+
+                const pos = pickZone();
+
+                const item = document.createElement('div');
+                item.className = 'viz-ripple-item';
+                item.style.left = pos.x + '%';
+                item.style.top = pos.y + '%';
+                item.style.transform = 'translate(-50%, -50%)';
+
+                const card = document.createElement('div');
+                card.className = 'viz-ripple-card';
+                card.style.textShadow = '0 0 8px ' + color + ', 0 0 16px ' + color + '40';
+
+                const labelSpan = document.createElement('span');
+                labelSpan.className = 'viz-ripple-id';
+                labelSpan.style.color = color;
+                labelSpan.textContent = label;
+                card.appendChild(labelSpan);
+
+                if (sublabel) {
+                    const subSpan = document.createElement('span');
+                    subSpan.className = 'viz-ripple-label';
+                    subSpan.style.color = color + 'DD';
+                    subSpan.textContent = ' ' + sublabel;
+                    card.appendChild(subSpan);
+                }
+
+                if (timestamp) {
+                    const tsSpan = document.createElement('span');
+                    tsSpan.className = 'viz-ripple-ts';
+                    try {
+                        const d = new Date(timestamp);
+                        tsSpan.textContent = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                    } catch(e) {}
+                    card.appendChild(tsSpan);
+                }
+
+                item.appendChild(card);
+
+                // Concentric ripple rings
+                var ringScales = [1, 1.6, 2.2];
+                var ringDelays = [0, 150, 300];
+                var ringDurations = [1200, 1400, 1600];
+
+                for (var i = 0; i < 3; i++) {
+                    var ring = document.createElement('div');
+                    ring.className = 'viz-ripple-ring';
+                    ring.style.color = color;
+                    ring.style.width = (200 * ringScales[i]) + 'px';
+                    ring.style.height = (200 * ringScales[i]) + 'px';
+                    ring.style.animationDuration = ringDurations[i] + 'ms';
+                    ring.style.animationDelay = ringDelays[i] + 'ms';
+                    ring.style.opacity = '0';
+                    item.appendChild(ring);
+                }
+
+                overlay.appendChild(item);
+
+                var timeout = setTimeout(function() {
+                    removeRipple(rippleRecord);
+                }, RIPPLE_LIFETIME_MS + 100);
+
+                var rippleRecord = {
+                    element: item,
+                    zoneIndex: pos.zoneIndex,
+                    createdAt: Date.now(),
+                    timeout: timeout,
+                };
+
+                activeRipples.push(rippleRecord);
+            }
+
+            // ── Deduplicate & filter history events for meaningful display ──
+            // Skip noisy internal events and collapse duplicates at the same timestamp
+            function filterHistoryEvents(events) {
+                var filtered = [];
+                var seen = {};  // "eventType|actType|timestamp_second" -> true
+                for (var i = 0; i < events.length; i++) {
+                    var ev = events[i];
+                    var eventType = ev.eventType || '';
+                    // Skip noisy internal workflow task events
+                    if (eventType === 'WorkflowTaskScheduled' || eventType === 'WorkflowTaskStarted') continue;
+                    // Dedupe: same event type + activity type within the same second
+                    var actType = (ev.details && ev.details['Activity Type']) || '';
+                    var tsSec = '';
+                    try { tsSec = new Date(ev.eventTime).toISOString().slice(0, 19); } catch(e) {}
+                    var dedupeKey = eventType + '|' + actType + '|' + tsSec;
+                    if (seen[dedupeKey]) continue;
+                    seen[dedupeKey] = true;
+                    filtered.push(ev);
+                }
+                return filtered;
+            }
+
+            // ── History mode: trigger from event data with friendly labels ──
+            function triggerHistoryRipple(ev) {
+                var actType = ev.details && ev.details['Activity Type'];
+                var color;
+                if (actType && agentColorMap[actType]) {
+                    color = agentColorMap[actType];
+                } else {
+                    color = CATEGORY_COLORS[ev.category] || CATEGORY_COLORS['default'];
+                }
+
+                // Build human-friendly label
+                var label = '';
+                var sublabel = '';
+
+                if (actType) {
+                    // Activity event — show the agent name as primary
+                    label = actType;
+                    var evType = ev.eventType || '';
+                    if (evType.includes('Scheduled')) {
+                        sublabel = AGENT_DESCRIPTIONS[actType] || 'Starting...';
+                    } else if (evType.includes('Started')) {
+                        sublabel = 'Running';
+                    } else if (evType.includes('Completed')) {
+                        sublabel = 'Completed';
+                    } else if (evType.includes('Failed')) {
+                        sublabel = 'Failed';
+                    } else if (evType.includes('TimedOut')) {
+                        sublabel = 'Timed out';
+                    }
+                } else {
+                    // Non-activity event
+                    var readable = EVENT_TYPE_LABELS[ev.eventType] || ev.eventType || '?';
+                    label = readable;
+                }
+
+                if (label.length > 35) label = label.slice(0, 32) + '...';
+
+                createRipple(color, label, sublabel, ev.eventTime);
+            }
+
+            // ── Live mode: trigger from bus events ──
+            function triggerLiveRipple(busEvent) {
+                // During catchup, queue live events for later
+                if (isCatchingUp) {
+                    catchupQueue.push(busEvent);
+                    return;
+                }
+                if (vizMode !== 'live') return;
+                // Check viz tab is active
+                var vizTab = document.getElementById('tab-visualization');
+                if (!vizTab || !vizTab.classList.contains('active')) return;
+
+                liveEventCount++;
+                if (liveCountEl) liveCountEl.textContent = liveEventCount;
+
+                if (busEvent.type === 'turn') {
+                    var color = getAgentColor(busEvent.agent);
+                    // Parse the turn text for display
+                    var rawText = busEvent.text || '';
+                    // Strip timestamp prefix
+                    var tsMatch = rawText.match(/^\[(\d{4}-\d{2}-\d{2}T[\d:.]+Z?)\]\s*/);
+                    if (tsMatch) rawText = rawText.slice(tsMatch[0].length);
+
+                    // Extract turn number
+                    var turnMatch = rawText.match(/^Turn (\d+)/);
+                    var turnNum = turnMatch ? parseInt(turnMatch[1]) : 0;
+                    var turnLabel = turnMatch ? 'Turn ' + turnMatch[1] : '';
+
+                    // Extract agent name
+                    var agentMatch = rawText.match(/\(([^)]+)\)/);
+                    var agentName = agentMatch ? agentMatch[1] : (busEvent.agent || '');
+                    if (liveAgentEl) liveAgentEl.textContent = agentName;
+
+                    // Build a meaningful detail from the rest
+                    var detail = '';
+                    var rest = rawText.includes('):') ? rawText.slice(rawText.indexOf('):') + 2).trim() : '';
+                    if (rest) {
+                        var segments = rest.split(' | ');
+                        // Collect tool names for a summary
+                        var tools = [];
+                        var textSnippet = '';
+                        for (var si = 0; si < segments.length; si++) {
+                            var seg = segments[si];
+                            if (seg.indexOf('\uD83D\uDD27 ') === 0 || seg.indexOf('🔧 ') === 0) {
+                                // Extract tool name (before the colon)
+                                var toolRaw = seg.slice(2).trim();
+                                var colonIdx = toolRaw.indexOf(': ');
+                                var toolName = colonIdx > 0 ? toolRaw.slice(0, colonIdx) : toolRaw;
+                                tools.push(humanizeToolName(toolName.trim()));
+                            } else if (!textSnippet && seg.length > 2) {
+                                textSnippet = seg.length > 40 ? seg.slice(0, 37) + '...' : seg;
+                            }
+                        }
+
+                        if (tools.length > 0) {
+                            // Show unique tools, e.g. "Reading file, Running command"
+                            var unique = [];
+                            for (var ti = 0; ti < tools.length; ti++) {
+                                if (unique.indexOf(tools[ti]) === -1) unique.push(tools[ti]);
+                            }
+                            detail = unique.slice(0, 2).join(', ');
+                            if (unique.length > 2) detail += ' +' + (unique.length - 2);
+                        } else if (textSnippet) {
+                            detail = textSnippet;
+                        }
+                    }
+
+                    // Compose the label: "agentName" as primary, detail as sublabel
+                    var displayLabel = agentName || turnLabel;
+                    var displaySub = detail || (turnLabel ? 'Thinking...' : '');
+                    createRipple(color, displayLabel, displaySub, busEvent.time);
+
+                } else if (busEvent.type === 'agent-switch') {
+                    var switchColor = getAgentColor(busEvent.agent);
+                    if (liveAgentEl) liveAgentEl.textContent = busEvent.agent;
+                    var agentDesc = AGENT_DESCRIPTIONS[busEvent.agent] || 'Starting...';
+                    createRipple(switchColor, busEvent.agent, agentDesc, busEvent.time);
+
+                } else if (busEvent.type === 'workflow-done') {
+                    var doneColor = busEvent.status === 'completed' ? '#4ADE80' : '#EF4444';
+                    var doneMsg = busEvent.status === 'completed' ? 'Scan finished successfully' : 'Scan ' + busEvent.status;
+                    createRipple(doneColor, 'Done', doneMsg, busEvent.time);
+                    if (liveStatusEl) {
+                        liveStatusEl.textContent = busEvent.status;
+                        liveStatusEl.className = 'viz-live-status viz-status-' + busEvent.status;
+                    }
+                    if (liveDot) liveDot.classList.remove('pulse');
+                }
+            }
+
+            // ── Listen to viz bus ──
+            window.__vizBus.on(triggerLiveRipple);
+
+            // ── Catchup: fast-forward replay of recent history, then go live ──
+            function startCatchup() {
+                // Filter events from the last ~5 minutes
+                var now = Date.now();
+                var CATCHUP_WINDOW_MS = 5 * 60 * 1000;
+                var recentEvents = filterHistoryEvents(vizEvents).filter(function(ev) {
+                    try {
+                        var t = new Date(ev.eventTime).getTime();
+                        return (now - t) < CATCHUP_WINDOW_MS;
+                    } catch(e) { return false; }
+                });
+
+                // If no recent events or very few, just go straight to live
+                if (recentEvents.length < 3) {
+                    finishCatchup();
+                    return;
+                }
+
+                isCatchingUp = true;
+                catchupQueue = [];
+                if (catchupBar) catchupBar.style.display = 'flex';
+
+                // Calculate replay speed: replay all events in ~4 seconds
+                var totalReplayMs = 4000;
+                var interval = Math.max(50, Math.floor(totalReplayMs / recentEvents.length));
+                var idx = 0;
+
+                catchupTimer = setInterval(function() {
+                    if (idx >= recentEvents.length) {
+                        clearInterval(catchupTimer);
+                        catchupTimer = null;
+                        // Small pause before going live
+                        setTimeout(finishCatchup, 600);
+                        return;
+                    }
+                    triggerHistoryRipple(recentEvents[idx]);
+                    // Update progress bar
+                    if (catchupFill) {
+                        var pct = Math.round(((idx + 1) / recentEvents.length) * 100);
+                        catchupFill.style.width = pct + '%';
+                    }
+                    idx++;
+                }, interval);
+            }
+
+            function finishCatchup() {
+                isCatchingUp = false;
+                if (catchupBar) {
+                    catchupBar.style.opacity = '0';
+                    setTimeout(function() {
+                        catchupBar.style.display = 'none';
+                        catchupBar.style.opacity = '';
+                    }, 400);
+                }
+                // Flush any queued live events
+                for (var i = 0; i < catchupQueue.length; i++) {
+                    triggerLiveRipple(catchupQueue[i]);
+                }
+                catchupQueue = [];
+            }
+
+            // ── Mode switching ──
+            function setMode(mode) {
+                vizMode = mode;
+                var historyControls = document.getElementById('vizHistoryControls');
+                var livePanel = document.getElementById('vizLivePanel');
+
+                if (mode === 'live') {
+                    isLiveActive = true;
+                    if (historyControls) historyControls.style.display = 'none';
+                    if (livePanel) livePanel.style.display = 'flex';
+                    if (modeToggle) {
+                        modeToggle.querySelector('[data-mode="live"]')?.classList.add('active');
+                        modeToggle.querySelector('[data-mode="history"]')?.classList.remove('active');
+                    }
+                    // Stop history playback
+                    stopPlaying();
+                    // Clear existing ripples
+                    for (var r of [...activeRipples]) removeRipple(r);
+                    zoneLastUsed.fill(0);
+                } else {
+                    isLiveActive = false;
+                    // Cancel any catchup in progress
+                    if (catchupTimer) { clearInterval(catchupTimer); catchupTimer = null; }
+                    isCatchingUp = false;
+                    if (catchupBar) catchupBar.style.display = 'none';
+                    catchupQueue = [];
+                    if (historyControls) historyControls.style.display = 'flex';
+                    if (livePanel) livePanel.style.display = 'none';
+                    if (modeToggle) {
+                        modeToggle.querySelector('[data-mode="history"]')?.classList.add('active');
+                        modeToggle.querySelector('[data-mode="live"]')?.classList.remove('active');
+                    }
+                    // Clear live ripples
+                    for (var r of [...activeRipples]) removeRipple(r);
+                    zoneLastUsed.fill(0);
+                }
+            }
+
+            // Mode toggle buttons
+            if (modeToggle) {
+                modeToggle.querySelectorAll('button').forEach(function(btn) {
+                    btn.addEventListener('click', function() {
+                        setMode(btn.dataset.mode);
+                        // Trigger catchup when switching to live
+                        if (btn.dataset.mode === 'live') {
+                            startCatchup();
+                        }
+                    });
+                });
+            }
+
+            // ── History playback ──
+            function getSpeed() {
+                return parseInt(speedSlider?.value || '5', 10);
+            }
+
+            function getInterval() {
+                var speed = getSpeed();
+                return Math.max(30, 1100 - speed * 55);
+            }
+
+            function playStep() {
+                if (eventIndex >= filteredVizEvents.length) {
+                    stopPlaying();
+                    if (playBtn) playBtn.textContent = '↺ Replay';
+                    eventIndex = 0;
+                    return;
+                }
+                triggerHistoryRipple(filteredVizEvents[eventIndex]);
+                eventIndex++;
+            }
+
+            // Pre-filter history events for manual playback
+            var filteredVizEvents = filterHistoryEvents(vizEvents);
+
+            function startPlaying() {
+                if (isPlaying) return;
+                isPlaying = true;
+                if (playBtn) playBtn.textContent = '⏸ Pause';
+                playStep();
+                playTimer = setInterval(function() {
+                    playStep();
+                }, getInterval());
+            }
+
+            function stopPlaying() {
+                isPlaying = false;
+                if (playBtn) playBtn.textContent = '▶ Play';
+                if (playTimer) {
+                    clearInterval(playTimer);
+                    playTimer = null;
+                }
+            }
+
+            function resetViz() {
+                stopPlaying();
+                if (catchupTimer) { clearInterval(catchupTimer); catchupTimer = null; }
+                isCatchingUp = false;
+                if (catchupBar) catchupBar.style.display = 'none';
+                catchupQueue = [];
+                eventIndex = 0;
+                liveEventCount = 0;
+                if (liveCountEl) liveCountEl.textContent = '0';
+                for (var r of [...activeRipples]) removeRipple(r);
+                zoneLastUsed.fill(0);
+                if (playBtn) playBtn.textContent = '▶ Play';
+            }
+
+            if (playBtn) {
+                playBtn.addEventListener('click', function() {
+                    if (isPlaying) stopPlaying();
+                    else startPlaying();
+                });
+            }
+            if (resetBtn) resetBtn.addEventListener('click', resetViz);
+            if (resetBtnLive) resetBtnLive.addEventListener('click', resetViz);
+            if (speedSlider) {
+                speedSlider.addEventListener('input', function() {
+                    if (isPlaying) {
+                        clearInterval(playTimer);
+                        playTimer = setInterval(playStep, getInterval());
+                    }
+                });
+            }
+
+            // ── Auto-detect: if workflow is running, default to live mode with catchup ──
+            var isRunning = !!document.getElementById('liveLogsViewer');
+            if (isRunning && modeToggle) {
+                setMode('live');
+                // Start catchup replay automatically
+                startCatchup();
+            }
+        })();
+
         // ── Query runner ──────────────────────────
         document.getElementById('runQueryBtn')?.addEventListener('click', async () => {
             const btn = document.getElementById('runQueryBtn');
@@ -1991,7 +2701,6 @@ const totalDurationSec = Math.round((progress?.summary?.totalDurationMs ?? sessi
 
 <style is:global>
     .wf-detail-container {
-        max-width: 1200px;
         padding: 0;
     }
 
@@ -2225,6 +2934,360 @@ const totalDurationSec = Math.round((progress?.summary?.totalDurationMs ?? sessi
 
     .wf-tab-content.active {
         display: block;
+    }
+
+    /* ── Visualization ────────────────────── */
+    @keyframes viz-text-reveal {
+        0% { clip-path: inset(0 100% 0 0); opacity: 0; }
+        5% { opacity: 1; }
+        100% { clip-path: inset(0 0 0 0); opacity: 1; }
+    }
+
+    @keyframes viz-ring-expand {
+        0% { transform: translate(-50%, -50%) scale(0); opacity: 0.5; }
+        100% { transform: translate(-50%, -50%) scale(1); opacity: 0; }
+    }
+
+    @keyframes viz-float-fade {
+        0% { transform: translateY(0) scale(1); opacity: 1; }
+        15% { opacity: 1; }
+        60% { transform: translateY(-24px) scale(1); opacity: 0.7; }
+        100% { transform: translateY(-48px) scale(0.85); opacity: 0; }
+    }
+
+    #tab-visualization {
+        padding: 0 !important;
+    }
+
+    .viz-container {
+        position: relative;
+        width: 100%;
+        min-height: 600px;
+        height: calc(100vh - 320px);
+        background: radial-gradient(ellipse at 50% 50%, rgba(30, 20, 50, 0.9) 0%, rgba(10, 10, 18, 0.98) 70%);
+        border-radius: 0;
+        overflow: hidden;
+    }
+
+    .viz-ripple-overlay {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        overflow: hidden;
+        z-index: 10;
+    }
+
+    .viz-ripple-item {
+        position: absolute;
+        animation: viz-float-fade 5000ms ease-in-out forwards;
+        will-change: transform, opacity;
+        z-index: 11;
+    }
+
+    .viz-ripple-card {
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 6px 14px;
+        background: rgba(0, 0, 0, 0.35);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border-radius: 6px;
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+        font-size: 12px;
+        font-weight: 500;
+        white-space: nowrap;
+        animation: viz-text-reveal 600ms ease-out forwards;
+    }
+
+    .viz-ripple-id {
+        font-weight: 700;
+        font-size: 11px;
+    }
+
+    .viz-ripple-label {
+        font-weight: 500;
+    }
+
+    .viz-ripple-ts {
+        font-size: 10px;
+        opacity: 0.4;
+        margin-left: 0.25rem;
+    }
+
+    .viz-ripple-ring {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 200px;
+        height: 200px;
+        border-radius: 50%;
+        border: 1px solid currentColor;
+        pointer-events: none;
+        animation: viz-ring-expand ease-out forwards;
+    }
+
+    .viz-info {
+        position: absolute;
+        top: 1.5rem;
+        left: 2rem;
+        z-index: 20;
+        pointer-events: none;
+    }
+
+    .viz-info-title {
+        font-size: 1rem;
+        font-weight: 700;
+        color: rgba(255, 255, 255, 0.5);
+        font-family: var(--font-mono);
+        letter-spacing: -0.02em;
+    }
+
+    .viz-info-subtitle {
+        font-size: 0.75rem;
+        color: rgba(255, 255, 255, 0.25);
+        margin-top: 0.25rem;
+    }
+
+    .viz-controls {
+        position: absolute;
+        bottom: 1.5rem;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 20;
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 0.5rem 1rem;
+        background: rgba(0, 0, 0, 0.5);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        border-radius: 12px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .viz-btn {
+        padding: 0.4rem 0.85rem;
+        font-size: 0.78rem;
+        font-weight: 600;
+        color: var(--white);
+        background: rgba(139, 92, 246, 0.25);
+        border: 1px solid rgba(139, 92, 246, 0.35);
+        border-radius: 8px;
+        cursor: pointer;
+        font-family: var(--font);
+        transition: all 0.15s;
+    }
+
+    .viz-btn:hover {
+        background: rgba(139, 92, 246, 0.4);
+        border-color: rgba(139, 92, 246, 0.6);
+    }
+
+    .viz-speed-label {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 0.72rem;
+        color: rgba(255, 255, 255, 0.5);
+        font-weight: 500;
+    }
+
+    .viz-speed-slider {
+        width: 80px;
+        height: 4px;
+        -webkit-appearance: none;
+        appearance: none;
+        background: rgba(255, 255, 255, 0.15);
+        border-radius: 2px;
+        outline: none;
+        cursor: pointer;
+    }
+
+    .viz-speed-slider::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        background: var(--purple);
+        cursor: pointer;
+        border: 2px solid rgba(255, 255, 255, 0.3);
+    }
+
+    .viz-speed-slider::-moz-range-thumb {
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        background: var(--purple);
+        cursor: pointer;
+        border: 2px solid rgba(255, 255, 255, 0.3);
+    }
+
+    /* Mode toggle (top-right) */
+    .viz-mode-toggle {
+        position: absolute;
+        top: 1.5rem;
+        right: 2rem;
+        z-index: 20;
+        display: flex;
+        background: rgba(0, 0, 0, 0.5);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border-radius: 8px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        overflow: hidden;
+    }
+
+    .viz-mode-btn {
+        padding: 0.4rem 1rem;
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: rgba(255, 255, 255, 0.4);
+        background: none;
+        border: none;
+        cursor: pointer;
+        font-family: var(--font);
+        transition: all 0.15s;
+    }
+
+    .viz-mode-btn:hover {
+        color: rgba(255, 255, 255, 0.7);
+    }
+
+    .viz-mode-btn.active {
+        color: var(--white);
+        background: rgba(139, 92, 246, 0.3);
+    }
+
+    /* Live status panel */
+    .viz-live-panel {
+        position: absolute;
+        bottom: 1.5rem;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 20;
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+        padding: 0.5rem 1.25rem;
+        background: rgba(0, 0, 0, 0.5);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        border-radius: 12px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        font-size: 0.78rem;
+    }
+
+    .viz-live-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #4ADE80;
+        flex-shrink: 0;
+    }
+
+    .viz-live-dot.pulse {
+        animation: viz-pulse 2s ease-in-out infinite;
+    }
+
+    @keyframes viz-pulse {
+        0%, 100% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.5); }
+        50% { box-shadow: 0 0 0 6px rgba(74, 222, 128, 0); }
+    }
+
+    .viz-live-label {
+        font-weight: 700;
+        color: #4ADE80;
+        text-transform: uppercase;
+        font-size: 0.68rem;
+        letter-spacing: 0.08em;
+    }
+
+    .viz-live-agent {
+        color: rgba(255, 255, 255, 0.8);
+        font-weight: 600;
+        font-family: var(--font-mono);
+        font-size: 0.75rem;
+    }
+
+    .viz-live-sep {
+        color: rgba(255, 255, 255, 0.2);
+    }
+
+    .viz-live-count {
+        color: rgba(255, 255, 255, 0.5);
+        font-size: 0.72rem;
+    }
+
+    .viz-live-status {
+        font-weight: 600;
+        font-size: 0.72rem;
+    }
+
+    .viz-status-completed {
+        color: #4ADE80;
+    }
+
+    .viz-status-failed {
+        color: #EF4444;
+    }
+
+    .viz-btn-sm {
+        padding: 0.25rem 0.6rem !important;
+        font-size: 0.7rem !important;
+    }
+
+    /* Catchup bar (fast-forward replay indicator) */
+    .viz-catchup-bar {
+        position: absolute;
+        top: 1.5rem;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 25;
+        transition: opacity 0.4s ease;
+    }
+
+    .viz-catchup-inner {
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+        padding: 0.45rem 1.25rem;
+        background: rgba(0, 0, 0, 0.6);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        border-radius: 10px;
+        border: 1px solid rgba(139, 92, 246, 0.3);
+    }
+
+    .viz-catchup-icon {
+        font-size: 0.7rem;
+        color: #A78BFA;
+        letter-spacing: -2px;
+    }
+
+    .viz-catchup-text {
+        font-size: 0.72rem;
+        font-weight: 600;
+        color: rgba(255, 255, 255, 0.7);
+    }
+
+    .viz-catchup-progress {
+        width: 80px;
+        height: 3px;
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 2px;
+        overflow: hidden;
+    }
+
+    .viz-catchup-fill {
+        height: 100%;
+        width: 0%;
+        background: linear-gradient(90deg, #8B5CF6, #A78BFA);
+        border-radius: 2px;
+        transition: width 0.15s ease;
     }
 
     /* ── History Timeline ────────────────── */

@@ -12,13 +12,11 @@
  *
  * Why this exists:
  * The Claude Agent SDK is designed for Claude and causes cascading
- * compatibility issues with non-Anthropic models through LiteLLM:
- * - Streaming tool_use format incompatibility
- * - Multi-turn content type translation failures (input_text vs text)
- * - Thinking block interference
+ * compatibility issues with non-Anthropic models. Going direct to vLLM
+ * (bypassing LiteLLM) provides significant speed improvements.
  *
  * This executor:
- * 1. Talks directly to vLLM/LiteLLM via /v1/chat/completions (native format)
+ * 1. Talks directly to vLLM via /v1/chat/completions (native OpenAI format)
  * 2. Implements core tools natively (Bash, Read, Write, Glob, Grep)
  * 3. Calls donna-helper tools directly (no MCP layer)
  * 4. Returns the same ClaudePromptResult for pipeline compatibility
@@ -458,9 +456,11 @@ export async function runOpenAIAgentLoop(
     ? `${endpoint.base_url}/v1/chat/completions`
     : 'http://localhost:8000/v1/chat/completions';
 
-  const apiKey = endpoint.api_key_env
-    ? (process.env[endpoint.api_key_env] ?? 'none')
-    : 'none';
+  const apiKey = endpoint.api_key
+    ? endpoint.api_key
+    : endpoint.api_key_env
+      ? (process.env[endpoint.api_key_env] ?? 'none')
+      : 'none';
 
   logger.info(`OpenAI executor: model=${endpoint.model}, url=${apiUrl}`);
   logger.info(`Working directory: ${effectiveCwd}`);

@@ -228,9 +228,8 @@ export async function runClaudePrompt(
   modelProfile?: ModelProfile
 ): Promise<ClaudePromptResult> {
   // Route to OpenAI executor for non-Anthropic models (Qwen, Llama, etc.)
-  // These models have a base_url pointing to LiteLLM/vLLM.
-  // The Claude Agent SDK is incompatible with these models, so we use
-  // a native OpenAI chat completions agent loop instead.
+  // Goes direct to vLLM (bypassing LiteLLM) for better speed.
+  // Uses native OpenAI chat completions format instead of Claude Agent SDK.
   if (modelProfile?.base_url) {
     logger.info(`Routing to OpenAI executor (model profile has base_url: ${modelProfile.base_url})`);
     return runOpenAIAgentLoop(
