@@ -11,6 +11,9 @@ data/
 dashboard/data/
 generate-graphics.py
 
+# Astro
+.astro/
+
 # Tauri
 src-tauri/target/
 src-tauri/sidecars/
