@@ -93,6 +93,35 @@ const base = import.meta.env.BASE_URL;
       }
       .nav-links .btn-sm:hover { background: #9B3DAE; }
 
+      /* ── Illustration styles ── */
+      .section-illustration {
+        border-radius: 20px;
+        overflow: hidden;
+        border: 1px solid var(--border);
+        box-shadow: 0 0 60px rgba(123,45,142,0.15), 0 20px 60px rgba(0,0,0,0.4);
+      }
+      .section-illustration img {
+        width: 100%;
+        height: auto;
+        display: block;
+      }
+      .hero-illustration {
+        max-width: 900px;
+        margin: 48px auto 0;
+      }
+      .features-illustration {
+        max-width: 800px;
+        margin: 0 auto 48px;
+      }
+      .pipeline-illustration {
+        max-width: 800px;
+        margin: 0 auto 48px;
+      }
+      .cta-illustration {
+        max-width: 700px;
+        margin: 0 auto 40px;
+      }
+
       /* ── Hero ── */
       .hero {
         padding: 160px 0 100px;
@@ -198,31 +227,76 @@ const base = import.meta.env.BASE_URL;
       /* ── Pipeline ── */
       .pipeline-section { background: rgba(14,14,26,0.85); }
       .pipeline {
-        display: flex; align-items: flex-start; gap: 0;
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 24px;
         position: relative;
       }
-      .pipe-step {
-        flex: 1; text-align: center; padding: 0 16px;
-        position: relative;
-      }
-      .pipe-num {
-        width: 48px; height: 48px;
-        border-radius: 50%; margin: 0 auto 16px;
-        display: flex; align-items: center; justify-content: center;
-        font-weight: 800; font-size: 18px;
-        border: 2px solid var(--purple);
-        color: var(--purple-light);
-        background: rgba(123,45,142,0.1);
-        position: relative; z-index: 1;
-      }
-      .pipe-step h3 { font-size: 16px; font-weight: 700; margin-bottom: 6px; }
-      .pipe-step p { font-size: 13px; color: var(--text-muted); }
-      .pipe-step:not(:last-child)::after {
+      /* Connecting line behind the cards */
+      .pipeline::before {
         content: '';
         position: absolute;
-        top: 24px; left: calc(50% + 28px); right: calc(-50% + 28px);
-        height: 2px;
-        background: linear-gradient(90deg, var(--purple), rgba(123,45,142,0.2));
+        top: 140px;
+        left: 10%;
+        right: 10%;
+        height: 3px;
+        background: linear-gradient(90deg, #60A5FA, var(--success), var(--error), var(--info));
+        opacity: 0.3;
+        z-index: 0;
+      }
+      .pipe-step {
+        text-align: center;
+        position: relative;
+        z-index: 1;
+        /* Scroll-reveal: start hidden */
+        opacity: 0;
+        transform: translateY(60px) scale(0.9);
+        transition: opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1),
+                    transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+      }
+      .pipe-step.revealed {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+      .pipe-step-img {
+        width: 200px;
+        height: 200px;
+        border-radius: 50%;
+        overflow: hidden;
+        margin: 0 auto 20px;
+        border: none;
+        position: relative;
+        transition: transform 0.4s ease, box-shadow 0.4s ease;
+      }
+      .pipe-step:hover .pipe-step-img {
+        transform: translateY(-8px) scale(1.08);
+      }
+      .pipe-step-img img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+        mask-image: radial-gradient(ellipse 50% 50% at center, rgba(0,0,0,1) 40%, rgba(0,0,0,0) 70%);
+        -webkit-mask-image: radial-gradient(ellipse 50% 50% at center, rgba(0,0,0,1) 40%, rgba(0,0,0,0) 70%);
+      }
+      .pipe-num {
+        width: 40px; height: 40px;
+        border-radius: 50%; margin: 0 auto 12px;
+        display: flex; align-items: center; justify-content: center;
+        font-weight: 800; font-size: 16px;
+        border: 2px solid var(--purple);
+        color: var(--purple-light);
+        background: rgba(123,45,142,0.15);
+      }
+      .pipe-step h3 { font-size: 17px; font-weight: 700; margin-bottom: 6px; }
+      .pipe-step p { font-size: 13px; color: var(--text-muted); line-height: 1.5; }
+
+      @media (max-width: 768px) {
+        .pipeline { grid-template-columns: repeat(2, 1fr); gap: 32px; }
+        .pipeline::before { display: none; }
+      }
+      @media (max-width: 480px) {
+        .pipeline { grid-template-columns: 1fr; }
       }
 
       /* ── Quick start ── */
@@ -280,8 +354,6 @@ const base = import.meta.env.BASE_URL;
       @media (max-width: 768px) {
         section { padding: 60px 0; }
         .hero { padding: 120px 0 60px; }
-        .pipeline { flex-direction: column; gap: 32px; }
-        .pipe-step:not(:last-child)::after { display: none; }
         .features-grid { grid-template-columns: 1fr; }
       }
     </style>
@@ -341,6 +413,10 @@ const base = import.meta.env.BASE_URL;
         <p class="section-eyebrow">Features</p>
         <h2 class="section-title">Why Donna?</h2>
         <p class="section-desc">Donna isn't just a one-shot scanner &mdash; it's a full pentesting platform that runs while you sleep.</p>
+      </div>
+      <!-- Agents Illustration -->
+      <div class="features-illustration section-illustration">
+        <img src={`${base}illustrations/agents-illustration.png`} alt="Donna's 13 autonomous AI agents patrolling a digital fortress" />
       </div>
       <div class="features-grid">
         <div class="feature-card">
@@ -411,23 +487,35 @@ const base = import.meta.env.BASE_URL;
         <h2 class="section-title">The Pentesting Pipeline</h2>
         <p class="section-desc">Four phases, fully automated, backed by durable Temporal workflows that survive crashes and auto-retry on failure.</p>
       </div>
-      <div class="pipeline">
-        <div class="pipe-step">
+      <div class="pipeline" id="pipeline-steps">
+        <div class="pipe-step" data-delay="0">
+          <div class="pipe-step-img">
+            <img src={`${base}illustrations/step-recon.png`} alt="Reconnaissance radar scanning" />
+          </div>
           <div class="pipe-num">1</div>
           <h3>Reconnaissance</h3>
           <p>Port scanning, tech detection, OSINT gathering, attack surface enumeration</p>
         </div>
-        <div class="pipe-step">
+        <div class="pipe-step" data-delay="150">
+          <div class="pipe-step-img">
+            <img src={`${base}illustrations/step-analysis.png`} alt="Vulnerability analysis" />
+          </div>
           <div class="pipe-num">2</div>
           <h3>Analysis</h3>
           <p>Vulnerability scanning, weakness identification, attack vector mapping</p>
         </div>
-        <div class="pipe-step">
+        <div class="pipe-step" data-delay="300">
+          <div class="pipe-step-img">
+            <img src={`${base}illustrations/step-exploit.png`} alt="Exploitation lightning strike" />
+          </div>
           <div class="pipe-num">3</div>
           <h3>Exploitation</h3>
           <p>PoC validation, payload crafting, privilege escalation, evidence collection</p>
         </div>
-        <div class="pipe-step">
+        <div class="pipe-step" data-delay="450">
+          <div class="pipe-step-img">
+            <img src={`${base}illustrations/step-report.png`} alt="Security report" />
+          </div>
           <div class="pipe-num">4</div>
           <h3>Reporting</h3>
           <p>Structured findings with severity, evidence, and remediation steps</p>
@@ -469,6 +557,10 @@ const base = import.meta.env.BASE_URL;
         <h2 class="section-title">Secure your infrastructure.<br/>Automatically.</h2>
         <p class="section-desc">13 AI agents. Temporal orchestration. Full reports. Open source.</p>
       </div>
+      <!-- CTA Illustration -->
+      <div class="cta-illustration section-illustration">
+        <img src={`${base}illustrations/cta-illustration.png`} alt="AI-powered shield protecting server infrastructure" />
+      </div>
       <div class="hero-cta">
         <a class="btn btn-primary" href="https://github.com/schlunsen/donna" target="_blank" rel="noopener">
           <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
@@ -496,5 +588,27 @@ const base = import.meta.env.BASE_URL;
   <!-- Three.js background -->
   <script is:inline src={`${base}three.min.js`}></script>
   <script is:inline src={`${base}presentation-bg.js`}></script>
+
+  <!-- Scroll-reveal staggered animations -->
+  <script is:inline>
+    (function() {
+      const observer = new IntersectionObserver(function(entries) {
+        entries.forEach(function(entry) {
+          if (entry.isIntersecting) {
+            const el = entry.target;
+            const delay = parseInt(el.getAttribute('data-delay') || '0', 10);
+            setTimeout(function() {
+              el.classList.add('revealed');
+            }, delay);
+            observer.unobserve(el);
+          }
+        });
+      }, { threshold: 0.15, rootMargin: '0px 0px -50px 0px' });
+
+      document.querySelectorAll('.pipe-step').forEach(function(step) {
+        observer.observe(step);
+      });
+    })();
+  </script>
 </body>
 </html>
